@@ -1,0 +1,8 @@
+[package]
+name = "rpm-utils"
+version = "0.1.0"
+authors = ["ander <ander.ender@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+structopt = "0.2"
