@@ -24,8 +24,10 @@ fn run(args: Args) -> Result<(), io::Error> {
     let file = RPMFile::open(args.path)?;
     if args.debug {
         println!("{:?}", file.lead);
+        println!("{:?}", file.signature);
     } else {
         println!("{}", file.lead);
+        println!("{:?}", file.signature);
     }
     Ok(())
 }
