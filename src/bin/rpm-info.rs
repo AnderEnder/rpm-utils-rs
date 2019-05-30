@@ -25,9 +25,11 @@ fn run(args: Args) -> Result<(), io::Error> {
     if args.debug {
         println!("{:?}", file.lead);
         println!("{:?}", file.signature);
+        println!("{:?}", file.indexes);
     } else {
         println!("{}", file.lead);
         println!("{:?}", file.signature);
+        println!("{:?}", file.indexes);
     }
     Ok(())
 }
