@@ -168,8 +168,29 @@ impl From<i32> for IndexType {
 }
 
 #[derive(Debug)]
+pub enum RPMSignatureTag {
+    HeaderSignatures,
+    HeaderImmutable,
+    Headeri18Ntable,
+    Size,
+    Other(i32),
+}
+
+impl From<i32> for RPMSignatureTag {
+    fn from(tag: i32) -> Self {
+        match tag {
+            62 => RPMSignatureTag::HeaderSignatures,
+            63 => RPMSignatureTag::HeaderImmutable,
+            100 => RPMSignatureTag::Headeri18Ntable,
+            1000 => RPMSignatureTag::Size,
+            x => RPMSignatureTag::Other(x),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct RPMHDRIndex {
-    pub tag: i32,
+    pub tag: RPMSignatureTag,
     pub itype: IndexType,
     pub offset: i32,
     pub count: i32,
@@ -179,7 +200,7 @@ impl RPMHDRIndex {
     pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
         let mut tag_be = [0_u8; 4];
         fh.read_exact(&mut tag_be)?;
-        let tag = i32::from_be_bytes(tag_be);
+        let tag = i32::from_be_bytes(tag_be).into();
 
         let mut itype_be = [0_u8; 4];
         fh.read_exact(&mut itype_be)?;
