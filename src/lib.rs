@@ -138,9 +138,39 @@ impl RawHeader {
 }
 
 #[derive(Debug)]
+pub enum IndexType {
+    Null,
+    Char,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    String,
+    Bin,
+    StringArray,
+}
+
+impl From<i32> for IndexType {
+    fn from(tag: i32) -> Self {
+        match tag {
+            0 => IndexType::Null,
+            1 => IndexType::Char,
+            2 => IndexType::Int8,
+            3 => IndexType::Int16,
+            4 => IndexType::Int32,
+            5 => IndexType::Int64,
+            6 => IndexType::String,
+            7 => IndexType::Bin,
+            8 => IndexType::StringArray,
+            _ => IndexType::Null,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct RPMHDRIndex {
     pub tag: i32,
-    pub itype: i32,
+    pub itype: IndexType,
     pub offset: i32,
     pub count: i32,
 }
@@ -153,7 +183,7 @@ impl RPMHDRIndex {
 
         let mut itype_be = [0_u8; 4];
         fh.read_exact(&mut itype_be)?;
-        let itype = i32::from_be_bytes(itype_be);
+        let itype = i32::from_be_bytes(itype_be).into();
 
         let mut offset_be = [0_u8; 4];
         fh.read_exact(&mut offset_be)?;
