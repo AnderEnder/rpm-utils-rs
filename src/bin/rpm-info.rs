@@ -26,10 +26,14 @@ fn run(args: Args) -> Result<(), io::Error> {
         println!("{:?}", file.lead);
         println!("{:?}", file.signature);
         println!("{:?}", file.indexes);
+        println!("{:?}", file.header);
+        println!("{:?}", file.h_indexes);
     } else {
         println!("{}", file.lead);
-        println!("{:?}", file.signature);
-        println!("{:?}", file.indexes);
+        println!("{:#?}", file.signature);
+        println!("{:#?}", file.indexes);
+        println!("{:#?}", file.header);
+        println!("{:#?}", file.h_indexes);
     }
     Ok(())
 }

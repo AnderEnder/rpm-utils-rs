@@ -138,36 +138,6 @@ impl RawHeader {
 }
 
 #[derive(Debug)]
-pub enum IndexType {
-    Null,
-    Char,
-    Int8,
-    Int16,
-    Int32,
-    Int64,
-    String,
-    Bin,
-    StringArray,
-}
-
-impl From<i32> for IndexType {
-    fn from(tag: i32) -> Self {
-        match tag {
-            0 => IndexType::Null,
-            1 => IndexType::Char,
-            2 => IndexType::Int8,
-            3 => IndexType::Int16,
-            4 => IndexType::Int32,
-            5 => IndexType::Int64,
-            6 => IndexType::String,
-            7 => IndexType::Bin,
-            8 => IndexType::StringArray,
-            _ => IndexType::Null,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub enum RPMSignatureTag {
     HeaderSignatures,
     HeaderImmutable,
@@ -190,8 +160,8 @@ impl From<i32> for RPMSignatureTag {
 
 #[derive(Debug)]
 pub struct RPMHDRIndex {
-    pub tag: RPMSignatureTag,
-    pub itype: IndexType,
+    pub tag: header::Tag,
+    pub itype: header::IndexType,
     pub offset: i32,
     pub count: i32,
 }
@@ -228,6 +198,8 @@ pub struct RPMFile {
     pub lead: RawLead,
     pub signature: RawHeader,
     pub indexes: Vec<RPMHDRIndex>,
+    pub header: RawHeader,
+    pub h_indexes: Vec<RPMHDRIndex>,
     pub file: File,
 }
 
@@ -235,6 +207,7 @@ impl RPMFile {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
         let mut file = OpenOptions::new().read(true).write(true).open(path)?;
         let lead = RawLead::read(&mut file)?;
+
         let signature = RawHeader::read(&mut file)?;
 
         let mut indexes = Vec::with_capacity(signature.nindex as usize);
@@ -243,11 +216,35 @@ impl RPMFile {
             indexes.push(index);
         }
 
+        //file.seek(io::SeekFrom::Current((signature.hsize - signature.nindex * 16).into()));
+        // aling to 8 bytes
+        let pos = 8 * (signature.hsize / 8 + if signature.hsize % 8 != 0 { 1 } else { 0 });
+        file.seek(io::SeekFrom::Current(pos.into()))?;
+
+        let header = RawHeader::read(&mut file)?;
+
+        let mut h_indexes = Vec::with_capacity(signature.nindex as usize);
+        for _ in 0..header.nindex {
+            let index = RPMHDRIndex::read(&mut file)?;
+            h_indexes.push(index);
+        }
+
         Ok(Self {
             lead,
             signature,
             indexes,
+            header,
+            h_indexes,
             file,
         })
     }
 }
+
+fn debug_some<R: Read + Seek>(file: &mut R) -> Result<(), io::Error> {
+    let mut debug = [0_u8; 32];
+    file.read_exact(&mut debug)?;
+    println!("Bytes: {:?}", debug);
+    Ok(())
+}
+
+pub mod header;
