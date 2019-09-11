@@ -1,5 +1,5 @@
-use std::io::{Read, Seek};
 use std::io;
+use std::io::{Read, Seek};
 
 use crate::header::Tag;
 

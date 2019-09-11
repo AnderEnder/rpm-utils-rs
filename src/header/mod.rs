@@ -1,5 +1,5 @@
-mod tags;
 mod index;
+mod tags;
 
-pub use tags::*;
 pub use index::*;
+pub use tags::*;

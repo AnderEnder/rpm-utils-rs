@@ -195,20 +195,20 @@ impl RPMFile {
                 }
                 Type::Int16 => {
                     let ps = item.offset as usize;
-                    let s: [u8; 2] = [data[ps], data[ps+1]];
+                    let s: [u8; 2] = [data[ps], data[ps + 1]];
                     let v = i16::from_be_bytes(s);
                     println!("Value: {}", v);
                 }
                 Type::Int32 => {
                     let ps = item.offset as usize;
-                    let s: [u8; 4] = [data[ps], data[ps+1], data[ps + 2], data[ps + 3]];
+                    let s: [u8; 4] = [data[ps], data[ps + 1], data[ps + 2], data[ps + 3]];
                     let v = i32::from_be_bytes(s);
                     println!("Value: {}", v);
                 }
 
                 Type::String => {
                     let ps = item.offset as usize;
-                    let ps2 = h_indexes[i+1].offset as usize;
+                    let ps2 = h_indexes[i + 1].offset as usize;
                     let bytes = &data[ps..ps2];
                     println!("Values: {:?}", bytes);
                     println!("String parse: {:?}", parse_string(bytes));
@@ -238,5 +238,5 @@ fn debug_some<R: Read + Seek>(file: &mut R) -> Result<(), io::Error> {
 fn parse_string(bytes: &[u8]) -> String {
     let position = bytes.iter().position(|&x| x == 0).unwrap_or(0);
     let bytes2 = &bytes[0..position];
-	String::from_utf8_lossy(bytes2).to_string()
+    String::from_utf8_lossy(bytes2).to_string()
 }

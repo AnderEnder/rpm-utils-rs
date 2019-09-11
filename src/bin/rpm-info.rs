@@ -1,8 +1,8 @@
 use rpm_utils::RPMFile;
+use std::io;
 use std::path::PathBuf;
 use std::process::exit;
 use structopt::StructOpt;
-use std::io;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "rpm-info")]
