@@ -213,6 +213,14 @@ impl RPMFile {
                     println!("Values: {:?}", bytes);
                     println!("String parse: {:?}", parse_string(bytes));
                 }
+
+                Type::StringArray => {
+                    let ps = item.offset as usize;
+                    let ps2 = h_indexes[i + 1].offset as usize;
+                    let bytes = &data[ps..ps2];
+                    println!("Values: {:?}", bytes);
+                    println!("String parse: {:?}", parse_strings(bytes));
+                }
                 _ => {}
             }
         }
@@ -239,4 +247,12 @@ fn parse_string(bytes: &[u8]) -> String {
     let position = bytes.iter().position(|&x| x == 0).unwrap_or(0);
     let bytes2 = &bytes[0..position];
     String::from_utf8_lossy(bytes2).to_string()
+}
+
+fn parse_strings(bytes: &[u8]) -> Vec<String> {
+    bytes
+        .split(|x| *x == 0)
+        .filter(|x| x.len() != 0)
+        .map(|b| String::from_utf8_lossy(b).to_string())
+        .collect()
 }
