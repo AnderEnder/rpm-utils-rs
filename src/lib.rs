@@ -1,7 +1,12 @@
+pub mod header;
+pub mod signature;
+
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek};
 use std::path::Path;
+
+use header::{Index, Type};
 
 const MAGIC: [u8; 4] = [237, 171, 238, 219];
 const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
@@ -74,10 +79,10 @@ impl fmt::Display for RawLead {
         writeln!(f, "minor: {}", self.minor)?;
         writeln!(f, "rpm_type: {}", self.rpm_type)?;
         writeln!(f, "archnum: {}", self.archnum)?;
-        writeln!(f, "name: {}", String::from_utf8_lossy(&self.name))?;
+        writeln!(f, "name: {}", parse_string(&self.name))?;
         writeln!(f, "osnum: {}", self.osnum)?;
         writeln!(f, "signature_type: {}", self.signature_type)?;
-        writeln!(f, "reserved: {}", String::from_utf8_lossy(&self.reserved))?;
+        writeln!(f, "reserved: {}", parse_string(&self.reserved))?;
         Ok(())
     }
 }
@@ -138,68 +143,12 @@ impl RawHeader {
 }
 
 #[derive(Debug)]
-pub enum RPMSignatureTag {
-    HeaderSignatures,
-    HeaderImmutable,
-    Headeri18Ntable,
-    Size,
-    Other(i32),
-}
-
-impl From<i32> for RPMSignatureTag {
-    fn from(tag: i32) -> Self {
-        match tag {
-            62 => RPMSignatureTag::HeaderSignatures,
-            63 => RPMSignatureTag::HeaderImmutable,
-            100 => RPMSignatureTag::Headeri18Ntable,
-            1000 => RPMSignatureTag::Size,
-            x => RPMSignatureTag::Other(x),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct RPMHDRIndex {
-    pub tag: header::Tag,
-    pub itype: header::IndexType,
-    pub offset: i32,
-    pub count: i32,
-}
-
-impl RPMHDRIndex {
-    pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
-        let mut tag_be = [0_u8; 4];
-        fh.read_exact(&mut tag_be)?;
-        let tag = i32::from_be_bytes(tag_be).into();
-
-        let mut itype_be = [0_u8; 4];
-        fh.read_exact(&mut itype_be)?;
-        let itype = i32::from_be_bytes(itype_be).into();
-
-        let mut offset_be = [0_u8; 4];
-        fh.read_exact(&mut offset_be)?;
-        let offset = i32::from_be_bytes(offset_be);
-
-        let mut count_be = [0_u8; 4];
-        fh.read_exact(&mut count_be)?;
-        let count = i32::from_be_bytes(count_be);
-
-        Ok(RPMHDRIndex {
-            tag,
-            itype,
-            offset,
-            count,
-        })
-    }
-}
-
-#[derive(Debug)]
 pub struct RPMFile {
     pub lead: RawLead,
     pub signature: RawHeader,
-    pub indexes: Vec<RPMHDRIndex>,
+    pub indexes: Vec<Index>,
     pub header: RawHeader,
-    pub h_indexes: Vec<RPMHDRIndex>,
+    pub h_indexes: Vec<Index>,
     pub file: File,
 }
 
@@ -212,12 +161,11 @@ impl RPMFile {
 
         let mut indexes = Vec::with_capacity(signature.nindex as usize);
         for _ in 0..signature.nindex {
-            let index = RPMHDRIndex::read(&mut file)?;
+            let index = Index::read(&mut file)?;
             indexes.push(index);
         }
 
-        //file.seek(io::SeekFrom::Current((signature.hsize - signature.nindex * 16).into()));
-        // aling to 8 bytes
+        // aligning to 8 bytes and move after index payload
         let pos = 8 * (signature.hsize / 8 + if signature.hsize % 8 != 0 { 1 } else { 0 });
         file.seek(io::SeekFrom::Current(pos.into()))?;
 
@@ -225,8 +173,48 @@ impl RPMFile {
 
         let mut h_indexes = Vec::with_capacity(signature.nindex as usize);
         for _ in 0..header.nindex {
-            let index = RPMHDRIndex::read(&mut file)?;
+            let index = Index::read(&mut file)?;
             h_indexes.push(index);
+        }
+
+        h_indexes.sort_by_key(|k| k.offset);
+
+        let mut data = vec![0_u8; header.hsize as usize];
+        file.read_exact(&mut data)?;
+        println!("Bytes: {:?}", data);
+        for i in 0..h_indexes.len() {
+            let item = &h_indexes[i];
+            println!(
+                "Name: {:?}, Type: {:?}, Offset: {}, Count: {}",
+                item.tag, item.itype, item.offset, item.count
+            );
+            match item.itype {
+                Type::Int8 => {
+                    let v = i8::from_be_bytes([data[item.offset as usize]; 1]);
+                    println!("Value: {}", v);
+                }
+                Type::Int16 => {
+                    let ps = item.offset as usize;
+                    let s: [u8; 2] = [data[ps], data[ps+1]];
+                    let v = i16::from_be_bytes(s);
+                    println!("Value: {}", v);
+                }
+                Type::Int32 => {
+                    let ps = item.offset as usize;
+                    let s: [u8; 4] = [data[ps], data[ps+1], data[ps + 2], data[ps + 3]];
+                    let v = i32::from_be_bytes(s);
+                    println!("Value: {}", v);
+                }
+
+                Type::String => {
+                    let ps = item.offset as usize;
+                    let ps2 = h_indexes[i+1].offset as usize;
+                    let bytes = &data[ps..ps2];
+                    println!("Values: {:?}", bytes);
+                    println!("String parse: {:?}", parse_string(bytes));
+                }
+                _ => {}
+            }
         }
 
         Ok(Self {
@@ -247,4 +235,8 @@ fn debug_some<R: Read + Seek>(file: &mut R) -> Result<(), io::Error> {
     Ok(())
 }
 
-pub mod header;
+fn parse_string(bytes: &[u8]) -> String {
+    let position = bytes.iter().position(|&x| x == 0).unwrap_or(0);
+    let bytes2 = &bytes[0..position];
+	String::from_utf8_lossy(bytes2).to_string()
+}

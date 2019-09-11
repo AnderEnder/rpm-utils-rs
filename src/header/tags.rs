@@ -1,40 +1,10 @@
 #[derive(Debug)]
-pub enum IndexType {
-    Null,
-    Char,
-    Int8,
-    Int16,
-    Int32,
-    Int64,
-    String,
-    Bin,
-    StringArray,
-}
-
-impl From<i32> for IndexType {
-    fn from(tag: i32) -> Self {
-        match tag {
-            0 => IndexType::Null,
-            1 => IndexType::Char,
-            2 => IndexType::Int8,
-            3 => IndexType::Int16,
-            4 => IndexType::Int32,
-            5 => IndexType::Int64,
-            6 => IndexType::String,
-            7 => IndexType::Bin,
-            8 => IndexType::StringArray,
-            _ => IndexType::Null,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub enum Tag {
     Image,
     Signatures,
     Immutable,
     Regions,
-    i18Ntable,
+    I18nTable,
     Name,
     Version,
     Release,
@@ -63,7 +33,7 @@ pub enum Tag {
     ReUn,
     PostUn,
     OldFileNames,
-    FileSizmes,
+    FileSizes,
     FilesStates,
     FileModes,
     FileUIDs,
@@ -187,7 +157,7 @@ impl From<i32> for Tag {
             62 => Tag::Signatures,
             63 => Tag::Immutable,
             64 => Tag::Regions,
-            100 => Tag::i18Ntable,
+            100 => Tag::I18nTable,
             1000 => Tag::Name,
             1001 => Tag::Version,
             1002 => Tag::Release,
@@ -216,7 +186,7 @@ impl From<i32> for Tag {
             1025 => Tag::ReUn,
             1026 => Tag::PostUn,
             1027 => Tag::OldFileNames,
-            1028 => Tag::FileSizmes,
+            1028 => Tag::FileSizes,
             1029 => Tag::FilesStates,
             1030 => Tag::FileModes,
             1031 => Tag::FileUIDs,
