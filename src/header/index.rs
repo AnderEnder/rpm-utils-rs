@@ -1,36 +1,21 @@
 use std::io;
 use std::io::{Read, Seek};
+use num_traits::{FromPrimitive, ToPrimitive};
+use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::header::Tag;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive)]
 pub enum Type {
-    Null,
-    Char,
-    Int8,
-    Int16,
-    Int32,
-    Int64,
-    String,
-    Bin,
-    StringArray,
-}
-
-impl From<i32> for Type {
-    fn from(tag: i32) -> Self {
-        match tag {
-            0 => Type::Null,
-            1 => Type::Char,
-            2 => Type::Int8,
-            3 => Type::Int16,
-            4 => Type::Int32,
-            5 => Type::Int64,
-            6 => Type::String,
-            7 => Type::Bin,
-            8 => Type::StringArray,
-            _ => Type::Null,
-        }
-    }
+    Null = 0,
+    Char = 1,
+    Int8 = 2,
+    Int16 = 3,
+    Int32 = 4,
+    Int64 = 5,
+    String = 6,
+    Bin = 7,
+    StringArray = 8,
 }
 
 #[derive(Debug)]
@@ -45,11 +30,14 @@ impl Index {
     pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
         let mut tag_be = [0_u8; 4];
         fh.read_exact(&mut tag_be)?;
-        let tag = i32::from_be_bytes(tag_be).into();
+        let tag_id = i32::from_be_bytes(tag_be);
+        let tag = Tag::from_i32(tag_id).unwrap_or(Tag::Other);
 
         let mut itype_be = [0_u8; 4];
         fh.read_exact(&mut itype_be)?;
-        let itype = i32::from_be_bytes(itype_be).into();
+
+        let type_id = i32::from_be_bytes(itype_be);
+        let itype = Type::from_i32(type_id).unwrap_or(Type::Null);;
 
         let mut offset_be = [0_u8; 4];
         fh.read_exact(&mut offset_be)?;
