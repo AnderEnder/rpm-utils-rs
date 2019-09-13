@@ -221,6 +221,12 @@ impl RPMFile {
                     println!("Values: {:?}", bytes);
                     println!("String parse: {:?}", parse_strings(bytes));
                 }
+                Type::Bin => {
+                    let ps = item.offset as usize;
+                    let ps2 = ps + item.count as usize;
+                    let bytes = &data[ps..ps2];
+                    println!("Values: {:?}", bytes);
+                }
                 _ => {}
             }
         }
