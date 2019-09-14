@@ -1,6 +1,7 @@
 pub mod header;
 pub mod signature;
 
+use std::char;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek};
@@ -189,20 +190,47 @@ impl RPMFile {
                 item.tag, item.itype, item.offset, item.count
             );
             match item.itype {
+                Type::Null => {
+                    let ps = item.offset as usize;
+                    let ps2 = h_indexes[i + 1].offset as usize;
+                    let bytes = &data[ps..ps2];
+                    println!("Values: {:?}", bytes);
+                }
+
                 Type::Int8 => {
                     let v = i8::from_be_bytes([data[item.offset as usize]; 1]);
                     println!("Value: {}", v);
                 }
+
+                Type::Char => {
+                    let ps = item.offset as usize;
+                    let mut bytes: [u8; 4] = Default::default();
+                    bytes.copy_from_slice(&data[ps..ps + 4]);
+                    let d = u32::from_be_bytes(bytes);
+                    let v = char::from_u32(d).unwrap_or_default();
+                    println!("Value: {}", v);
+                }
+
                 Type::Int16 => {
                     let ps = item.offset as usize;
                     let s: [u8; 2] = [data[ps], data[ps + 1]];
                     let v = i16::from_be_bytes(s);
                     println!("Value: {}", v);
                 }
+
                 Type::Int32 => {
                     let ps = item.offset as usize;
-                    let s: [u8; 4] = [data[ps], data[ps + 1], data[ps + 2], data[ps + 3]];
-                    let v = i32::from_be_bytes(s);
+                    let mut bytes: [u8; 4] = Default::default();
+                    bytes.copy_from_slice(&data[ps..ps + 4]);
+                    let v = i32::from_be_bytes(bytes);
+                    println!("Value: {}", v);
+                }
+
+                Type::Int64 => {
+                    let ps = item.offset as usize;
+                    let mut bytes: [u8; 8] = Default::default();
+                    bytes.copy_from_slice(&data[ps..ps + 8]);
+                    let v = i64::from_be_bytes(bytes);
                     println!("Value: {}", v);
                 }
 
@@ -212,6 +240,13 @@ impl RPMFile {
                     let bytes = &data[ps..ps2];
                     // println!("Values: {:?}", bytes);
                     println!("String parse: {:?}", parse_string(bytes));
+                }
+
+                Type::Bin => {
+                    let ps = item.offset as usize;
+                    let ps2 = ps + item.count as usize;
+                    let bytes = &data[ps..ps2];
+                    println!("Values: {:?}", bytes);
                 }
 
                 Type::StringArray => {
@@ -229,15 +264,6 @@ impl RPMFile {
                     // println!("Values: {:?}", bytes);
                     println!("String parse: {:?}", parse_string(bytes));
                 }
-
-                Type::Bin => {
-                    let ps = item.offset as usize;
-                    let ps2 = ps + item.count as usize;
-                    let bytes = &data[ps..ps2];
-                    println!("Values: {:?}", bytes);
-                }
-
-                _ => {}
             }
         }
 
