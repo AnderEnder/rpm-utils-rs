@@ -1,7 +1,7 @@
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::{FromPrimitive, ToPrimitive};
 use std::io;
 use std::io::{Read, Seek};
-use num_traits::{FromPrimitive, ToPrimitive};
-use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::header::Tag;
 
@@ -31,13 +31,19 @@ impl Index {
         let mut tag_be = [0_u8; 4];
         fh.read_exact(&mut tag_be)?;
         let tag_id = i32::from_be_bytes(tag_be);
-        let tag = Tag::from_i32(tag_id).unwrap_or(Tag::Other);
+        let tag = Tag::from_i32(tag_id).unwrap_or_else(|| {
+            println!("Unknown tag {}", tag_id);
+            Tag::Other
+        });
 
         let mut itype_be = [0_u8; 4];
         fh.read_exact(&mut itype_be)?;
 
         let type_id = i32::from_be_bytes(itype_be);
-        let itype = Type::from_i32(type_id).unwrap_or(Type::Null);;
+        let itype = Type::from_i32(type_id).unwrap_or_else(|| {
+            println!("Unknown type {}", type_id);
+            Type::Null
+        });
 
         let mut offset_be = [0_u8; 4];
         fh.read_exact(&mut offset_be)?;
