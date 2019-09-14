@@ -16,6 +16,7 @@ pub enum Type {
     String = 6,
     Bin = 7,
     StringArray = 8,
+    I18nstring = 9,
 }
 
 #[derive(Debug)]
