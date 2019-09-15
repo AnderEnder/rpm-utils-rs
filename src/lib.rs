@@ -7,7 +7,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek};
 use std::path::Path;
 
-use header::{Index, Type};
+use header::{Index, RType, Type};
 
 const MAGIC: [u8; 4] = [237, 171, 238, 219];
 const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
@@ -183,6 +183,9 @@ impl RPMFile {
         let mut data = vec![0_u8; header.hsize as usize];
         file.read_exact(&mut data)?;
         println!("Bytes: {:?}", data);
+
+        let mut tags: Vec<RType> = Vec::new();
+
         for i in 0..h_indexes.len() {
             let item = &h_indexes[i];
             println!(
@@ -195,11 +198,7 @@ impl RPMFile {
                     let ps2 = h_indexes[i + 1].offset as usize;
                     let bytes = &data[ps..ps2];
                     println!("Values: {:?}", bytes);
-                }
-
-                Type::Int8 => {
-                    let v = i8::from_be_bytes([data[item.offset as usize]; 1]);
-                    println!("Value: {}", v);
+                    tags.push(RType::Null);
                 }
 
                 Type::Char => {
@@ -208,6 +207,13 @@ impl RPMFile {
                     bytes.copy_from_slice(&data[ps..ps + 4]);
                     let d = u32::from_be_bytes(bytes);
                     let v = char::from_u32(d).unwrap_or_default();
+                    tags.push(RType::Char(v));
+                    println!("Value: {}", v);
+                }
+
+                Type::Int8 => {
+                    let v = i8::from_be_bytes([data[item.offset as usize]; 1]);
+                    tags.push(RType::Int8(v));
                     println!("Value: {}", v);
                 }
 
@@ -215,6 +221,7 @@ impl RPMFile {
                     let ps = item.offset as usize;
                     let s: [u8; 2] = [data[ps], data[ps + 1]];
                     let v = i16::from_be_bytes(s);
+                    tags.push(RType::Int16(v));
                     println!("Value: {}", v);
                 }
 
@@ -223,6 +230,7 @@ impl RPMFile {
                     let mut bytes: [u8; 4] = Default::default();
                     bytes.copy_from_slice(&data[ps..ps + 4]);
                     let v = i32::from_be_bytes(bytes);
+                    tags.push(RType::Int32(v));
                     println!("Value: {}", v);
                 }
 
@@ -231,6 +239,7 @@ impl RPMFile {
                     let mut bytes: [u8; 8] = Default::default();
                     bytes.copy_from_slice(&data[ps..ps + 8]);
                     let v = i64::from_be_bytes(bytes);
+                    tags.push(RType::Int64(v));
                     println!("Value: {}", v);
                 }
 
@@ -238,15 +247,18 @@ impl RPMFile {
                     let ps = item.offset as usize;
                     let ps2 = h_indexes[i + 1].offset as usize;
                     let bytes = &data[ps..ps2];
+                    let v = parse_string(bytes);
                     // println!("Values: {:?}", bytes);
-                    println!("String parse: {:?}", parse_string(bytes));
+                    println!("String parse: {:?}", &v);
+                    tags.push(RType::String(v));
                 }
 
                 Type::Bin => {
                     let ps = item.offset as usize;
                     let ps2 = ps + item.count as usize;
                     let bytes = &data[ps..ps2];
-                    println!("Values: {:?}", bytes);
+                    println!("Values: {:?}", &bytes);
+                    tags.push(RType::Bin(bytes.to_vec()));
                 }
 
                 Type::StringArray => {
@@ -254,18 +266,24 @@ impl RPMFile {
                     let ps2 = h_indexes[i + 1].offset as usize;
                     let bytes = &data[ps..ps2];
                     // println!("Values: {:?}", bytes);
-                    println!("String parse: {:?}", parse_strings(bytes));
+                    let v = parse_strings(bytes);
+                    println!("String parse: {:?}", &v);
+                    tags.push(RType::StringArray(v));
                 }
 
                 Type::I18nstring => {
                     let ps = item.offset as usize;
                     let ps2 = h_indexes[i + 1].offset as usize;
                     let bytes = &data[ps..ps2];
+                    let v = parse_string(bytes);
                     // println!("Values: {:?}", bytes);
-                    println!("String parse: {:?}", parse_string(bytes));
+                    println!("String parse: {:?}", &v);
+                    tags.push(RType::I18nstring(v));
                 }
             }
         }
+
+        println!("Tags: {:?}", tags);
 
         Ok(Self {
             lead,

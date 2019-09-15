@@ -19,6 +19,20 @@ pub enum Type {
     I18nstring = 9,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum RType {
+    Null,
+    Char(char),
+    Int8(i8),
+    Int16(i16),
+    Int32(i32),
+    Int64(i64),
+    String(String),
+    Bin(Vec<u8>),
+    StringArray(Vec<String>),
+    I18nstring(String),
+}
+
 #[derive(Debug)]
 pub struct Index {
     pub tag: Tag,
