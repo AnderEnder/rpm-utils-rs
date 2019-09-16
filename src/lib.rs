@@ -166,8 +166,18 @@ impl RPMFile {
             indexes.push(index);
         }
 
+        indexes.sort_by_key(|k| k.offset);
+
+        let mut s_data = vec![0_u8; signature.hsize as usize];
+        file.read_exact(&mut s_data)?;
+
+        let s_tags = tags_from_raw(&indexes, &s_data);
+        println!("STags: {:?}", s_tags);
+
         // aligning to 8 bytes and move after index payload
-        let pos = 8 * (signature.hsize / 8 + if signature.hsize % 8 != 0 { 1 } else { 0 });
+        // let pos = 8 * (signature.hsize / 8 + if signature.hsize % 8 != 0 { 1 } else { 0 });
+        // aligning to 8 bytes
+        let pos = signature.hsize - 8 * (signature.hsize / 8);
         file.seek(io::SeekFrom::Current(pos.into()))?;
 
         let header = RawHeader::read(&mut file)?;
@@ -182,107 +192,8 @@ impl RPMFile {
 
         let mut data = vec![0_u8; header.hsize as usize];
         file.read_exact(&mut data)?;
-        println!("Bytes: {:?}", data);
 
-        let mut tags: Vec<RType> = Vec::new();
-
-        for i in 0..h_indexes.len() {
-            let item = &h_indexes[i];
-            println!(
-                "Name: {:?}, Type: {:?}, Offset: {}, Count: {}",
-                item.tag, item.itype, item.offset, item.count
-            );
-            match item.itype {
-                Type::Null => {
-                    let ps = item.offset as usize;
-                    let ps2 = h_indexes[i + 1].offset as usize;
-                    let bytes = &data[ps..ps2];
-                    println!("Values: {:?}", bytes);
-                    tags.push(RType::Null);
-                }
-
-                Type::Char => {
-                    let ps = item.offset as usize;
-                    let mut bytes: [u8; 4] = Default::default();
-                    bytes.copy_from_slice(&data[ps..ps + 4]);
-                    let d = u32::from_be_bytes(bytes);
-                    let v = char::from_u32(d).unwrap_or_default();
-                    tags.push(RType::Char(v));
-                    println!("Value: {}", v);
-                }
-
-                Type::Int8 => {
-                    let v = i8::from_be_bytes([data[item.offset as usize]; 1]);
-                    tags.push(RType::Int8(v));
-                    println!("Value: {}", v);
-                }
-
-                Type::Int16 => {
-                    let ps = item.offset as usize;
-                    let s: [u8; 2] = [data[ps], data[ps + 1]];
-                    let v = i16::from_be_bytes(s);
-                    tags.push(RType::Int16(v));
-                    println!("Value: {}", v);
-                }
-
-                Type::Int32 => {
-                    let ps = item.offset as usize;
-                    let mut bytes: [u8; 4] = Default::default();
-                    bytes.copy_from_slice(&data[ps..ps + 4]);
-                    let v = i32::from_be_bytes(bytes);
-                    tags.push(RType::Int32(v));
-                    println!("Value: {}", v);
-                }
-
-                Type::Int64 => {
-                    let ps = item.offset as usize;
-                    let mut bytes: [u8; 8] = Default::default();
-                    bytes.copy_from_slice(&data[ps..ps + 8]);
-                    let v = i64::from_be_bytes(bytes);
-                    tags.push(RType::Int64(v));
-                    println!("Value: {}", v);
-                }
-
-                Type::String => {
-                    let ps = item.offset as usize;
-                    let ps2 = h_indexes[i + 1].offset as usize;
-                    let bytes = &data[ps..ps2];
-                    let v = parse_string(bytes);
-                    // println!("Values: {:?}", bytes);
-                    println!("String parse: {:?}", &v);
-                    tags.push(RType::String(v));
-                }
-
-                Type::Bin => {
-                    let ps = item.offset as usize;
-                    let ps2 = ps + item.count as usize;
-                    let bytes = &data[ps..ps2];
-                    println!("Values: {:?}", &bytes);
-                    tags.push(RType::Bin(bytes.to_vec()));
-                }
-
-                Type::StringArray => {
-                    let ps = item.offset as usize;
-                    let ps2 = h_indexes[i + 1].offset as usize;
-                    let bytes = &data[ps..ps2];
-                    // println!("Values: {:?}", bytes);
-                    let v = parse_strings(bytes);
-                    println!("String parse: {:?}", &v);
-                    tags.push(RType::StringArray(v));
-                }
-
-                Type::I18nstring => {
-                    let ps = item.offset as usize;
-                    let ps2 = h_indexes[i + 1].offset as usize;
-                    let bytes = &data[ps..ps2];
-                    let v = parse_string(bytes);
-                    // println!("Values: {:?}", bytes);
-                    println!("String parse: {:?}", &v);
-                    tags.push(RType::I18nstring(v));
-                }
-            }
-        }
-
+        let tags = tags_from_raw(&h_indexes, &data);
         println!("Tags: {:?}", tags);
 
         Ok(Self {
@@ -315,4 +226,86 @@ fn parse_strings(bytes: &[u8]) -> Vec<String> {
         .filter(|x| x.len() != 0)
         .map(|b| String::from_utf8_lossy(b).to_string())
         .collect()
+}
+
+fn tags_from_raw(indexes: &[Index], data: &[u8]) -> Vec<RType> {
+    let mut tags: Vec<RType> = Vec::new();
+
+    for i in 0..indexes.len() {
+        let item = &indexes[i];
+        match item.itype {
+            Type::Null => {
+                tags.push(RType::Null);
+            }
+
+            Type::Char => {
+                let ps = item.offset as usize;
+                let mut bytes: [u8; 4] = Default::default();
+                bytes.copy_from_slice(&data[ps..ps + 4]);
+                let d = u32::from_be_bytes(bytes);
+                let v = char::from_u32(d).unwrap_or_default();
+                tags.push(RType::Char(v));
+            }
+
+            Type::Int8 => {
+                let v = i8::from_be_bytes([data[item.offset as usize]; 1]);
+                tags.push(RType::Int8(v));
+            }
+
+            Type::Int16 => {
+                let ps = item.offset as usize;
+                let s: [u8; 2] = [data[ps], data[ps + 1]];
+                let v = i16::from_be_bytes(s);
+                tags.push(RType::Int16(v));
+            }
+
+            Type::Int32 => {
+                let ps = item.offset as usize;
+                let mut bytes: [u8; 4] = Default::default();
+                bytes.copy_from_slice(&data[ps..ps + 4]);
+                let v = i32::from_be_bytes(bytes);
+                tags.push(RType::Int32(v));
+            }
+
+            Type::Int64 => {
+                let ps = item.offset as usize;
+                let mut bytes: [u8; 8] = Default::default();
+                bytes.copy_from_slice(&data[ps..ps + 8]);
+                let v = i64::from_be_bytes(bytes);
+                tags.push(RType::Int64(v));
+            }
+
+            Type::String => {
+                let ps = item.offset as usize;
+                let ps2 = indexes[i + 1].offset as usize;
+                let bytes = &data[ps..ps2];
+                let v = parse_string(bytes);
+                tags.push(RType::String(v));
+            }
+
+            Type::Bin => {
+                let ps = item.offset as usize;
+                let ps2 = ps + item.count as usize;
+                let bytes = &data[ps..ps2];
+                tags.push(RType::Bin(bytes.to_vec()));
+            }
+
+            Type::StringArray => {
+                let ps = item.offset as usize;
+                let ps2 = indexes[i + 1].offset as usize;
+                let bytes = &data[ps..ps2];
+                let v = parse_strings(bytes);
+                tags.push(RType::StringArray(v));
+            }
+
+            Type::I18nstring => {
+                let ps = item.offset as usize;
+                let ps2 = indexes[i + 1].offset as usize;
+                let bytes = &data[ps..ps2];
+                let v = parse_string(bytes);
+                tags.push(RType::I18nstring(v));
+            }
+        }
+    }
+    tags
 }
