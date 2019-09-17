@@ -39,7 +39,10 @@ pub struct Index<T> {
     pub count: i32,
 }
 
-impl<T> Index<T> where T: FromPrimitive + Default {
+impl<T> Index<T>
+where
+    T: FromPrimitive + Default,
+{
     pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
         let mut tag_be = [0_u8; 4];
         fh.read_exact(&mut tag_be)?;
