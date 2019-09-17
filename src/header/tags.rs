@@ -271,3 +271,9 @@ pub enum Tag {
     Modularitylabel = 5096,
     Other = 8888,
 }
+
+impl Default for Tag {
+    fn default() -> Tag {
+        Tag::Other
+    }
+}

@@ -7,7 +7,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek};
 use std::path::Path;
 
-use header::{Index, RTag, RType, Type};
+use header::{Index, Tag, RTag, RType, Type};
 
 const MAGIC: [u8; 4] = [237, 171, 238, 219];
 const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
@@ -147,9 +147,9 @@ impl RawHeader {
 pub struct RPMFile {
     pub lead: RawLead,
     pub signature: RawHeader,
-    pub indexes: Vec<Index>,
+    pub indexes: Vec<Index<Tag>>,
     pub header: RawHeader,
-    pub h_indexes: Vec<Index>,
+    pub h_indexes: Vec<Index<Tag>>,
     pub file: File,
 }
 
@@ -228,7 +228,7 @@ fn parse_strings(bytes: &[u8]) -> Vec<String> {
         .collect()
 }
 
-fn tags_from_raw(indexes: &[Index], data: &[u8]) -> Vec<RTag> {
+fn tags_from_raw(indexes: &[Index<Tag>], data: &[u8]) -> Vec<RTag> {
     let mut tags: Vec<RTag> = Vec::new();
 
     for i in 0..indexes.len() {
