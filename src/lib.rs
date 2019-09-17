@@ -1,5 +1,4 @@
 pub mod header;
-pub mod signature;
 
 use std::char;
 use std::fmt;
@@ -228,8 +227,8 @@ fn parse_strings(bytes: &[u8]) -> Vec<String> {
         .collect()
 }
 
-fn tags_from_raw(indexes: &[Index<Tag>], data: &[u8]) -> Vec<RTag> {
-    let mut tags: Vec<RTag> = Vec::new();
+fn tags_from_raw(indexes: &[Index<Tag>], data: &[u8]) -> Vec<RTag<Tag>> {
+    let mut tags: Vec<RTag<Tag>> = Vec::new();
 
     for i in 0..indexes.len() {
         let item = &indexes[i];
