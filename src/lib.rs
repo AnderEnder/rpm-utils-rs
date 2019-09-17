@@ -7,7 +7,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek};
 use std::path::Path;
 
-use header::{Index, RType, Type};
+use header::{Index, RTag, RType, Type};
 
 const MAGIC: [u8; 4] = [237, 171, 238, 219];
 const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
@@ -228,15 +228,13 @@ fn parse_strings(bytes: &[u8]) -> Vec<String> {
         .collect()
 }
 
-fn tags_from_raw(indexes: &[Index], data: &[u8]) -> Vec<RType> {
-    let mut tags: Vec<RType> = Vec::new();
+fn tags_from_raw(indexes: &[Index], data: &[u8]) -> Vec<RTag> {
+    let mut tags: Vec<RTag> = Vec::new();
 
     for i in 0..indexes.len() {
         let item = &indexes[i];
-        match item.itype {
-            Type::Null => {
-                tags.push(RType::Null);
-            }
+        let tag_value = match item.itype {
+            Type::Null => RType::Null,
 
             Type::Char => {
                 let ps = item.offset as usize;
@@ -244,19 +242,19 @@ fn tags_from_raw(indexes: &[Index], data: &[u8]) -> Vec<RType> {
                 bytes.copy_from_slice(&data[ps..ps + 4]);
                 let d = u32::from_be_bytes(bytes);
                 let v = char::from_u32(d).unwrap_or_default();
-                tags.push(RType::Char(v));
+                RType::Char(v)
             }
 
             Type::Int8 => {
                 let v = i8::from_be_bytes([data[item.offset as usize]; 1]);
-                tags.push(RType::Int8(v));
+                RType::Int8(v)
             }
 
             Type::Int16 => {
                 let ps = item.offset as usize;
                 let s: [u8; 2] = [data[ps], data[ps + 1]];
                 let v = i16::from_be_bytes(s);
-                tags.push(RType::Int16(v));
+                RType::Int16(v)
             }
 
             Type::Int32 => {
@@ -264,7 +262,7 @@ fn tags_from_raw(indexes: &[Index], data: &[u8]) -> Vec<RType> {
                 let mut bytes: [u8; 4] = Default::default();
                 bytes.copy_from_slice(&data[ps..ps + 4]);
                 let v = i32::from_be_bytes(bytes);
-                tags.push(RType::Int32(v));
+                RType::Int32(v)
             }
 
             Type::Int64 => {
@@ -272,7 +270,7 @@ fn tags_from_raw(indexes: &[Index], data: &[u8]) -> Vec<RType> {
                 let mut bytes: [u8; 8] = Default::default();
                 bytes.copy_from_slice(&data[ps..ps + 8]);
                 let v = i64::from_be_bytes(bytes);
-                tags.push(RType::Int64(v));
+                RType::Int64(v)
             }
 
             Type::String => {
@@ -280,14 +278,14 @@ fn tags_from_raw(indexes: &[Index], data: &[u8]) -> Vec<RType> {
                 let ps2 = indexes[i + 1].offset as usize;
                 let bytes = &data[ps..ps2];
                 let v = parse_string(bytes);
-                tags.push(RType::String(v));
+                RType::String(v)
             }
 
             Type::Bin => {
                 let ps = item.offset as usize;
                 let ps2 = ps + item.count as usize;
                 let bytes = &data[ps..ps2];
-                tags.push(RType::Bin(bytes.to_vec()));
+                RType::Bin(bytes.to_vec())
             }
 
             Type::StringArray => {
@@ -295,7 +293,7 @@ fn tags_from_raw(indexes: &[Index], data: &[u8]) -> Vec<RType> {
                 let ps2 = indexes[i + 1].offset as usize;
                 let bytes = &data[ps..ps2];
                 let v = parse_strings(bytes);
-                tags.push(RType::StringArray(v));
+                RType::StringArray(v)
             }
 
             Type::I18nstring => {
@@ -303,9 +301,15 @@ fn tags_from_raw(indexes: &[Index], data: &[u8]) -> Vec<RType> {
                 let ps2 = indexes[i + 1].offset as usize;
                 let bytes = &data[ps..ps2];
                 let v = parse_string(bytes);
-                tags.push(RType::I18nstring(v));
+                RType::I18nstring(v)
             }
-        }
+        };
+
+        let tag = RTag {
+            name: item.tag,
+            value: tag_value,
+        };
+        tags.push(tag);
     }
     tags
 }

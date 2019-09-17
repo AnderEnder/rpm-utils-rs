@@ -1,6 +1,6 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 
-#[derive(Debug, FromPrimitive, ToPrimitive)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive)]
 pub enum Tag {
     Image = 61,
     Signatures = 62,
