@@ -1,6 +1,7 @@
 use num_derive::{FromPrimitive, ToPrimitive};
+use strum_macros::Display;
 
-#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Display, PartialEq, Eq, Hash)]
 pub enum Tag {
     Image = 61,
     Signatures = 62,

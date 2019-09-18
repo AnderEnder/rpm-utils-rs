@@ -2,8 +2,9 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::io;
 use std::io::{Read, Seek};
+use strum_macros::Display;
 
-#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive)]
+#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display)]
 pub enum Type {
     Null = 0,
     Char = 1,
@@ -17,7 +18,7 @@ pub enum Type {
     I18nstring = 9,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum RType {
     Null,
     Char(char),

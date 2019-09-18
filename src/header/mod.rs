@@ -8,7 +8,7 @@ pub use tags::*;
 
 use num_traits::{FromPrimitive, ToPrimitive};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RTag<T>
 where
     T: FromPrimitive + Default,

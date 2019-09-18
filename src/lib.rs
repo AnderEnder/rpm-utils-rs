@@ -6,6 +6,7 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek};
 use std::path::Path;
+use std::collections::HashMap;
 
 use header::{Index, RTag, RType, SigTag, Tag, Type};
 
@@ -83,8 +84,7 @@ impl fmt::Display for RawLead {
         writeln!(f, "name: {}", parse_string(&self.name))?;
         writeln!(f, "osnum: {}", self.osnum)?;
         writeln!(f, "signature_type: {}", self.signature_type)?;
-        writeln!(f, "reserved: {}", parse_string(&self.reserved))?;
-        Ok(())
+        writeln!(f, "reserved: {}", parse_string(&self.reserved))
     }
 }
 
@@ -98,8 +98,7 @@ impl fmt::Debug for RawLead {
         writeln!(f, "name: {:?}", &&self.name[..])?;
         writeln!(f, "osnum: {}", self.osnum)?;
         writeln!(f, "signature_type: {}", self.signature_type)?;
-        writeln!(f, "reserved: {:?}", self.reserved)?;
-        Ok(())
+        writeln!(f, "reserved: {:?}", self.reserved)
     }
 }
 
@@ -148,8 +147,10 @@ pub struct RPMFile {
     pub lead: RawLead,
     pub signature: RawHeader,
     pub indexes: Vec<Index<SigTag>>,
+    pub sigtags: Vec<RTag<SigTag>>,
     pub header: RawHeader,
     pub h_indexes: Vec<Index<Tag>>,
+    pub tags: Vec<RTag<Tag>>,
     pub file: File,
 }
 
@@ -171,8 +172,8 @@ impl RPMFile {
         let mut s_data = vec![0_u8; signature.hsize as usize];
         file.read_exact(&mut s_data)?;
 
-        let s_tags = tags_from_raw(&indexes, &s_data);
-        println!("STags: {:?}", s_tags);
+        let sigtags = tags_from_raw(&indexes, &s_data);
+        println!("STags: {:?}", sigtags);
 
         // aligning to 8 bytes and move after index payload
         // let pos = 8 * (signature.hsize / 8 + if signature.hsize % 8 != 0 { 1 } else { 0 });
@@ -200,10 +201,76 @@ impl RPMFile {
             lead,
             signature,
             indexes,
+            sigtags,
             header,
             h_indexes,
+            tags,
             file,
         })
+    }
+}
+
+impl fmt::Display for RPMFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut tags = HashMap::new();
+        for tag in &self.tags {
+            tags.insert(tag.name.clone(), tag.value.clone());
+        }
+
+        let name = match tags.get(&Tag::Name){
+            Some(RType::String(v)) => v,
+            _ => "",
+        };
+
+        let version = match tags.get(&Tag::Version){
+            Some(RType::String(v)) => v,
+            _ => "",
+        };
+
+        let release = match tags.get(&Tag::Release){
+            Some(RType::String(v)) => v,
+            _ => "",
+        };
+
+        let arch = match tags.get(&Tag::Arch){
+            Some(RType::String(v)) => v,
+            _ => "",
+        };
+
+        let group = match tags.get(&Tag::Group){
+            Some(RType::I18nstring(v)) => v,
+            _ => "",
+        };
+
+        let size = match tags.get(&Tag::Size){
+            Some(RType::Int32(v)) => v,
+            _ => &0,
+        };
+
+        let license = match tags.get(&Tag::License){
+            Some(RType::String(v)) => v,
+            _ => "",
+        };
+
+        let source_rpm = match tags.get(&Tag::SourceRpm){
+            Some(RType::String(v)) => v,
+            _ => "",
+        };
+
+        writeln!(f, "Name        : {}", name)?;
+        writeln!(f, "Version     : {}", version)?;
+        writeln!(f, "Release     : {}", release)?;
+        writeln!(f, "Architecture: {}", arch)?;
+        writeln!(f, "Group       : {}", group)?;
+        writeln!(f, "Size        : {}", size)?;
+        writeln!(f, "License     : {}", license)?;
+        writeln!(f, "Signature   : (none)")?;
+        writeln!(f, "Source RPM  : {}", source_rpm)?;
+        writeln!(f, "Build Date  : Sat Nov 22 13:00:00 2008")?;
+        writeln!(f, "Build Host  : localhost")?;
+        writeln!(f, "Relocations : /usr")?;
+        writeln!(f, "Summary     : hello -- hello, world rpm")?;
+        writeln!(f, "Description :\nSimple rpm demonstration")
     }
 }
 
