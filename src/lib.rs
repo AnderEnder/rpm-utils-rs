@@ -1,12 +1,13 @@
 pub mod header;
 
+use chrono::{DateTime, Local, TimeZone};
 use num_traits::FromPrimitive;
 use std::char;
+use std::collections::HashMap;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek};
 use std::path::Path;
-use std::collections::HashMap;
 
 use header::{Index, RTag, RType, SigTag, Tag, Type};
 
@@ -173,7 +174,6 @@ impl RPMFile {
         file.read_exact(&mut s_data)?;
 
         let sigtags = tags_from_raw(&indexes, &s_data);
-        println!("STags: {:?}", sigtags);
 
         // aligning to 8 bytes and move after index payload
         // let pos = 8 * (signature.hsize / 8 + if signature.hsize % 8 != 0 { 1 } else { 0 });
@@ -195,7 +195,6 @@ impl RPMFile {
         file.read_exact(&mut data)?;
 
         let tags = tags_from_raw(&h_indexes, &data);
-        println!("Tags: {:?}", tags);
 
         Ok(Self {
             lead,
@@ -217,43 +216,63 @@ impl fmt::Display for RPMFile {
             tags.insert(tag.name.clone(), tag.value.clone());
         }
 
-        let name = match tags.get(&Tag::Name){
+        let name = match tags.get(&Tag::Name) {
             Some(RType::String(v)) => v,
             _ => "",
         };
 
-        let version = match tags.get(&Tag::Version){
+        let version = match tags.get(&Tag::Version) {
             Some(RType::String(v)) => v,
             _ => "",
         };
 
-        let release = match tags.get(&Tag::Release){
+        let release = match tags.get(&Tag::Release) {
             Some(RType::String(v)) => v,
             _ => "",
         };
 
-        let arch = match tags.get(&Tag::Arch){
+        let arch = match tags.get(&Tag::Arch) {
             Some(RType::String(v)) => v,
             _ => "",
         };
 
-        let group = match tags.get(&Tag::Group){
+        let group = match tags.get(&Tag::Group) {
             Some(RType::I18nstring(v)) => v,
             _ => "",
         };
 
-        let size = match tags.get(&Tag::Size){
+        let size = match tags.get(&Tag::Size) {
             Some(RType::Int32(v)) => v,
             _ => &0,
         };
 
-        let license = match tags.get(&Tag::License){
+        let license = match tags.get(&Tag::License) {
             Some(RType::String(v)) => v,
             _ => "",
         };
 
-        let source_rpm = match tags.get(&Tag::SourceRpm){
+        let source_rpm = match tags.get(&Tag::SourceRpm) {
             Some(RType::String(v)) => v,
+            _ => "",
+        };
+
+        let build_time = match tags.get(&Tag::BuildTime) {
+            Some(RType::Int32(v)) => Local.timestamp(*v as i64, 0).format("%c").to_string(),
+            _ => "".to_owned(),
+        };
+
+        let build_host = match tags.get(&Tag::BuildHost) {
+            Some(RType::String(v)) => v,
+            _ => "",
+        };
+
+        let summary = match tags.get(&Tag::Summary) {
+            Some(RType::I18nstring(v)) => v,
+            _ => "",
+        };
+
+        let description = match tags.get(&Tag::Description) {
+            Some(RType::I18nstring(v)) => v,
             _ => "",
         };
 
@@ -266,11 +285,11 @@ impl fmt::Display for RPMFile {
         writeln!(f, "License     : {}", license)?;
         writeln!(f, "Signature   : (none)")?;
         writeln!(f, "Source RPM  : {}", source_rpm)?;
-        writeln!(f, "Build Date  : Sat Nov 22 13:00:00 2008")?;
-        writeln!(f, "Build Host  : localhost")?;
+        writeln!(f, "Build Date  : {}", build_time)?;
+        writeln!(f, "Build Host  : {}", build_host)?;
         writeln!(f, "Relocations : /usr")?;
-        writeln!(f, "Summary     : hello -- hello, world rpm")?;
-        writeln!(f, "Description :\nSimple rpm demonstration")
+        writeln!(f, "Summary     : {}", summary)?;
+        writeln!(f, "Description : \n{}", description)
     }
 }
 
