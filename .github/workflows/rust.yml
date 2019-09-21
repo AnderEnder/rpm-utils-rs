@@ -16,9 +16,9 @@ jobs:
       with:
         toolchain: stable
         override: true
-    - uses: actions-rs/cargo@v1
-      with:
-        override: true
+#    - uses: actions-rs/cargo@v1
+#      with:
+#        override: true
     - name: Build
       run: cargo build --verbose
     - name: Run tests
