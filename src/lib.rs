@@ -1,6 +1,6 @@
 pub mod header;
 
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{Local, TimeZone};
 use num_traits::FromPrimitive;
 use std::char;
 use std::collections::HashMap;
@@ -175,8 +175,6 @@ impl RPMFile {
 
         let sigtags = tags_from_raw(&indexes, &s_data);
 
-        // aligning to 8 bytes and move after index payload
-        // let pos = 8 * (signature.hsize / 8 + if signature.hsize % 8 != 0 { 1 } else { 0 });
         // aligning to 8 bytes
         let pos = signature.hsize - 8 * (signature.hsize / 8);
         file.seek(io::SeekFrom::Current(pos.into()))?;
@@ -209,51 +207,87 @@ impl RPMFile {
     }
 }
 
-impl fmt::Display for RPMFile {
+#[derive(Debug)]
+pub struct RPMInfo {
+    pub name: String,
+    pub version: String,
+    pub release: String,
+    pub arch: String,
+    pub group: String,
+    pub size: i32,
+    pub license: String,
+    pub source_rpm: String,
+    pub build_time: String,
+    pub build_host: String,
+    pub summary: String,
+    pub description: String,
+}
+
+impl fmt::Display for RPMInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Name        : {}", self.name)?;
+        writeln!(f, "Version     : {}", self.version)?;
+        writeln!(f, "Release     : {}", self.release)?;
+        writeln!(f, "Architecture: {}", self.arch)?;
+        writeln!(f, "Group       : {}", self.group)?;
+        writeln!(f, "Size        : {}", self.size)?;
+        writeln!(f, "License     : {}", self.license)?;
+        writeln!(f, "Signature   : (none)")?;
+        writeln!(f, "Source RPM  : {}", self.source_rpm)?;
+        writeln!(f, "Build Date  : {}", self.build_time)?;
+        writeln!(f, "Build Host  : {}", self.build_host)?;
+        writeln!(f, "Relocations : /usr")?;
+        writeln!(f, "Summary     : {}", self.summary)?;
+        writeln!(f, "Description : \n{}", self.description)
+    }
+}
+
+impl From<RPMFile> for RPMInfo {
+    fn from(item: RPMFile) -> Self {
         let mut tags = HashMap::new();
-        for tag in &self.tags {
-            tags.insert(tag.name.clone(), tag.value.clone());
+
+        for tag in &item.tags {
+            tags.insert(tag.name, tag.value.clone());
         }
 
         let name = match tags.get(&Tag::Name) {
-            Some(RType::String(v)) => v,
-            _ => "",
+            Some(RType::String(v)) => v.to_string(),
+            _ => "".to_owned(),
         };
 
         let version = match tags.get(&Tag::Version) {
-            Some(RType::String(v)) => v,
-            _ => "",
+            Some(RType::String(v)) => v.to_string(),
+            _ => "".to_owned(),
         };
 
         let release = match tags.get(&Tag::Release) {
-            Some(RType::String(v)) => v,
-            _ => "",
+            Some(RType::String(v)) => v.to_string(),
+            _ => "".to_owned(),
         };
 
         let arch = match tags.get(&Tag::Arch) {
-            Some(RType::String(v)) => v,
-            _ => "",
+            Some(RType::String(v)) => v.to_string(),
+            _ => "".to_owned(),
         };
 
         let group = match tags.get(&Tag::Group) {
-            Some(RType::I18nstring(v)) => v,
-            _ => "",
+            Some(RType::I18nstring(v)) => v.to_string(),
+            _ => "".to_owned(),
         };
 
         let size = match tags.get(&Tag::Size) {
-            Some(RType::Int32(v)) => v,
-            _ => &0,
+            Some(RType::Int32(v)) => *v,
+            _ => 0,
         };
 
         let license = match tags.get(&Tag::License) {
-            Some(RType::String(v)) => v,
-            _ => "",
+            Some(RType::String(v)) => v.to_string(),
+            _ => "".to_owned(),
         };
 
         let source_rpm = match tags.get(&Tag::SourceRpm) {
-            Some(RType::String(v)) => v,
-            _ => "",
+            Some(RType::String(v)) => v.to_string(),
+            _ => "".to_owned(),
         };
 
         let build_time = match tags.get(&Tag::BuildTime) {
@@ -262,34 +296,34 @@ impl fmt::Display for RPMFile {
         };
 
         let build_host = match tags.get(&Tag::BuildHost) {
-            Some(RType::String(v)) => v,
-            _ => "",
+            Some(RType::String(v)) => v.to_string(),
+            _ => "".to_owned(),
         };
 
         let summary = match tags.get(&Tag::Summary) {
-            Some(RType::I18nstring(v)) => v,
-            _ => "",
+            Some(RType::I18nstring(v)) => v.to_string(),
+            _ => "".to_owned(),
         };
 
         let description = match tags.get(&Tag::Description) {
-            Some(RType::I18nstring(v)) => v,
-            _ => "",
+            Some(RType::I18nstring(v)) => v.to_string(),
+            _ => "".to_owned(),
         };
 
-        writeln!(f, "Name        : {}", name)?;
-        writeln!(f, "Version     : {}", version)?;
-        writeln!(f, "Release     : {}", release)?;
-        writeln!(f, "Architecture: {}", arch)?;
-        writeln!(f, "Group       : {}", group)?;
-        writeln!(f, "Size        : {}", size)?;
-        writeln!(f, "License     : {}", license)?;
-        writeln!(f, "Signature   : (none)")?;
-        writeln!(f, "Source RPM  : {}", source_rpm)?;
-        writeln!(f, "Build Date  : {}", build_time)?;
-        writeln!(f, "Build Host  : {}", build_host)?;
-        writeln!(f, "Relocations : /usr")?;
-        writeln!(f, "Summary     : {}", summary)?;
-        writeln!(f, "Description : \n{}", description)
+        RPMInfo {
+            name,
+            version,
+            release,
+            arch,
+            group,
+            size,
+            license,
+            source_rpm,
+            build_time,
+            build_host,
+            summary,
+            description,
+        }
     }
 }
 

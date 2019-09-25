@@ -1,4 +1,4 @@
-use rpm_utils::RPMFile;
+use rpm_utils::{RPMFile, RPMInfo};
 use std::io;
 use std::path::PathBuf;
 use std::process::exit;
@@ -31,7 +31,8 @@ fn run(args: Args) -> Result<(), io::Error> {
         println!("{:?}", file.h_indexes);
         println!("{:?}", file.tags);
     } else {
-        println!("{}", file);
+        let info: RPMInfo = file.into();
+        println!("{}", info);
     }
     Ok(())
 }
