@@ -291,7 +291,7 @@ impl From<RPMFile> for RPMInfo {
         };
 
         let build_time = match tags.get(&Tag::BuildTime) {
-            Some(RType::Int32(v)) => Local.timestamp(*v as i64, 0).format("%c").to_string(),
+            Some(RType::Int32(v)) => Local.timestamp(i64::from(*v), 0).format("%c").to_string(),
             _ => "".to_owned(),
         };
 
@@ -343,7 +343,7 @@ fn parse_string(bytes: &[u8]) -> String {
 fn parse_strings(bytes: &[u8]) -> Vec<String> {
     bytes
         .split(|x| *x == 0)
-        .filter(|x| x.len() != 0)
+        .filter(|x| !x.is_empty())
         .map(|b| String::from_utf8_lossy(b).to_string())
         .collect()
 }
