@@ -208,6 +208,14 @@ impl RPMFile {
 }
 
 #[derive(Debug)]
+pub struct RPMPayload {
+    pub size: i32,
+    pub format: String,
+    pub compressor: String,
+    pub flags: String,
+}
+
+#[derive(Debug)]
 pub struct RPMInfo {
     pub name: String,
     pub version: String,
@@ -221,6 +229,7 @@ pub struct RPMInfo {
     pub build_host: String,
     pub summary: String,
     pub description: String,
+    pub payload_size: i32,
 }
 
 impl fmt::Display for RPMInfo {
@@ -232,11 +241,11 @@ impl fmt::Display for RPMInfo {
         writeln!(f, "Group       : {}", self.group)?;
         writeln!(f, "Size        : {}", self.size)?;
         writeln!(f, "License     : {}", self.license)?;
-        writeln!(f, "Signature   : (none)")?;
+        writeln!(f, "Signature   : (unimplemented)")?;
         writeln!(f, "Source RPM  : {}", self.source_rpm)?;
         writeln!(f, "Build Date  : {}", self.build_time)?;
         writeln!(f, "Build Host  : {}", self.build_host)?;
-        writeln!(f, "Relocations : /usr")?;
+        writeln!(f, "Relocations : (unimplemented)")?;
         writeln!(f, "Summary     : {}", self.summary)?;
         writeln!(f, "Description : \n{}", self.description)
     }
@@ -245,9 +254,14 @@ impl fmt::Display for RPMInfo {
 impl From<RPMFile> for RPMInfo {
     fn from(item: RPMFile) -> Self {
         let mut tags = HashMap::new();
+        let mut sigtags = HashMap::new();
 
         for tag in &item.tags {
             tags.insert(tag.name, tag.value.clone());
+        }
+
+        for tag in &item.sigtags {
+            sigtags.insert(tag.name, tag.value.clone());
         }
 
         let name = match tags.get(&Tag::Name) {
@@ -310,6 +324,33 @@ impl From<RPMFile> for RPMInfo {
             _ => "".to_owned(),
         };
 
+        let payload_size = match sigtags.get(&SigTag::PayloadSize) {
+            Some(RType::Int32(v)) => *v,
+            _ => 0,
+        };
+
+        let payload_format = match tags.get(&Tag::Payloadformat) {
+            Some(RType::String(v)) => v.to_string(),
+            _ => "".to_owned(),
+        };
+
+        let payload_compressor = match tags.get(&Tag::Payloadcompressor) {
+            Some(RType::String(v)) => v.to_string(),
+            _ => "".to_owned(),
+        };
+
+        let payload_flags = match tags.get(&Tag::Payloadflags) {
+            Some(RType::String(v)) => v.to_string(),
+            _ => "".to_owned(),
+        };
+
+        let payload = RPMPayload {
+            size: payload_size,
+            format: payload_format,
+            compressor: payload_compressor,
+            flags: payload_flags
+        };
+
         RPMInfo {
             name,
             version,
@@ -323,6 +364,7 @@ impl From<RPMFile> for RPMInfo {
             build_host,
             summary,
             description,
+            payload_size,
         }
     }
 }

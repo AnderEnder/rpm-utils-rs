@@ -30,6 +30,8 @@ fn run(args: Args) -> Result<(), io::Error> {
         println!("{:?}", file.header);
         println!("{:?}", file.h_indexes);
         println!("{:?}", file.tags);
+        let info: RPMInfo = file.into();
+        println!("{:?}", info);
     } else {
         let info: RPMInfo = file.into();
         println!("{}", info);

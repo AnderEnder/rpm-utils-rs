@@ -1,7 +1,7 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 use strum_macros::Display;
 
-#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Display)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Display, PartialEq, Eq, Hash)]
 pub enum SigTag {
     HeaderImage = 61,
     HeaderSignatures = 62,
