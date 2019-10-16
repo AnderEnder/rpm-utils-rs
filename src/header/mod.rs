@@ -21,7 +21,9 @@ where
 
 type Tags<T> = HashMap<T, RType>;
 
-pub fn get_tag<T: FromPrimitive + Default + Eq + Hash>(tags: &Tags<T>, name: &T) -> String
+pub fn get_tag<T>(tags: &Tags<T>, name: &T) -> String
+where
+    T: FromPrimitive + Default + Eq + Hash
 {
     match tags.get(name) {
         Some(value) => value.into(),
@@ -29,7 +31,10 @@ pub fn get_tag<T: FromPrimitive + Default + Eq + Hash>(tags: &Tags<T>, name: &T)
     }
 }
 
-pub fn get_tag_i32<T: FromPrimitive + Default + Eq + Hash>(tags: &Tags<T>, name: &T) -> i32 {
+pub fn get_tag_i32<T>(tags: &Tags<T>, name: &T) -> i32
+where
+    T: FromPrimitive + Default + Eq + Hash
+{
     match tags.get(name) {
         Some(value) => value.into(),
         _ => i32::default(),
