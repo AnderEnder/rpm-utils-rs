@@ -8,6 +8,7 @@ pub use tags::*;
 
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::collections::HashMap;
+use std::hash::Hash;
 
 #[derive(Debug, Clone)]
 pub struct RTag<T>
@@ -18,16 +19,17 @@ where
     pub value: RType,
 }
 
-type Tags = HashMap<Tag, RType>;
+type Tags<T> = HashMap<T, RType>;
 
-pub fn get_tag(tags: &Tags, name: &Tag) -> String {
+pub fn get_tag<T: FromPrimitive + Default + Eq + Hash>(tags: &Tags<T>, name: &T) -> String
+{
     match tags.get(name) {
         Some(value) => value.into(),
         _ => "".to_string(),
     }
 }
 
-pub fn get_tag_i32(tags: &Tags, name: &Tag) -> i32 {
+pub fn get_tag_i32<T: FromPrimitive + Default + Eq + Hash>(tags: &Tags<T>, name: &T) -> i32 {
     match tags.get(name) {
         Some(value) => value.into(),
         _ => i32::default(),

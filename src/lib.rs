@@ -264,31 +264,11 @@ impl From<RPMFile> for RPMInfo {
             sigtags.insert(tag.name, tag.value.clone());
         }
 
-        let payload_size = match sigtags.get(&SigTag::PayloadSize) {
-            Some(RType::Int32(v)) => *v,
-            _ => 0,
-        };
-
-        let payload_format = match tags.get(&Tag::Payloadformat) {
-            Some(RType::String(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let payload_compressor = match tags.get(&Tag::Payloadcompressor) {
-            Some(RType::String(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let payload_flags = match tags.get(&Tag::Payloadflags) {
-            Some(RType::String(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
         let payload = RPMPayload {
-            size: payload_size,
-            format: payload_format,
-            compressor: payload_compressor,
-            flags: payload_flags
+            size: get_tag_i32(&sigtags, &SigTag::PayloadSize),
+            format: get_tag(&tags, &Tag::Payloadformat),
+            compressor: get_tag(&tags, &Tag::Payloadcompressor),
+            flags: get_tag(&tags, &Tag::Payloadflags),
         };
 
         RPMInfo {
@@ -304,7 +284,7 @@ impl From<RPMFile> for RPMInfo {
             build_host: get_tag(&tags, &Tag::BuildHost),
             summary: get_tag(&tags, &Tag::Summary),
             description: get_tag(&tags, &Tag::Description),
-            payload_size,
+            payload_size: get_tag_i32(&sigtags, &SigTag::PayloadSize),
         }
     }
 }
