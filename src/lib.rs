@@ -9,7 +9,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek};
 use std::path::Path;
 
-use header::{Index, RTag, RType, SigTag, Tag, Type};
+use header::{Index, RTag, RType, SigTag, Tag, Type, get_tag, get_tag_i32};
 
 const MAGIC: [u8; 4] = [237, 171, 238, 219];
 const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
@@ -264,66 +264,6 @@ impl From<RPMFile> for RPMInfo {
             sigtags.insert(tag.name, tag.value.clone());
         }
 
-        let name = match tags.get(&Tag::Name) {
-            Some(RType::String(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let version = match tags.get(&Tag::Version) {
-            Some(RType::String(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let release = match tags.get(&Tag::Release) {
-            Some(RType::String(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let arch = match tags.get(&Tag::Arch) {
-            Some(RType::String(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let group = match tags.get(&Tag::Group) {
-            Some(RType::I18nstring(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let size = match tags.get(&Tag::Size) {
-            Some(RType::Int32(v)) => *v,
-            _ => 0,
-        };
-
-        let license = match tags.get(&Tag::License) {
-            Some(RType::String(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let source_rpm = match tags.get(&Tag::SourceRpm) {
-            Some(RType::String(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let build_time = match tags.get(&Tag::BuildTime) {
-            Some(RType::Int32(v)) => Local.timestamp(i64::from(*v), 0).format("%c").to_string(),
-            _ => "".to_owned(),
-        };
-
-        let build_host = match tags.get(&Tag::BuildHost) {
-            Some(RType::String(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let summary = match tags.get(&Tag::Summary) {
-            Some(RType::I18nstring(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
-        let description = match tags.get(&Tag::Description) {
-            Some(RType::I18nstring(v)) => v.to_string(),
-            _ => "".to_owned(),
-        };
-
         let payload_size = match sigtags.get(&SigTag::PayloadSize) {
             Some(RType::Int32(v)) => *v,
             _ => 0,
@@ -352,18 +292,18 @@ impl From<RPMFile> for RPMInfo {
         };
 
         RPMInfo {
-            name,
-            version,
-            release,
-            arch,
-            group,
-            size,
-            license,
-            source_rpm,
-            build_time,
-            build_host,
-            summary,
-            description,
+            name: get_tag(&tags, &Tag::Name),
+            version: get_tag(&tags, &Tag::Version),
+            release: get_tag(&tags, &Tag::Release),
+            arch: get_tag(&tags, &Tag::Arch),
+            group: get_tag(&tags, &Tag::Group),
+            size: get_tag_i32(&tags, &Tag::Size),
+            license: get_tag(&tags, &Tag::License),
+            source_rpm: get_tag(&tags, &Tag::SourceRpm),
+            build_time: get_tag(&tags, &Tag::BuildTime),
+            build_host: get_tag(&tags, &Tag::BuildHost),
+            summary: get_tag(&tags, &Tag::Summary),
+            description: get_tag(&tags, &Tag::Description),
             payload_size,
         }
     }

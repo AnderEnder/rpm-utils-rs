@@ -32,6 +32,30 @@ pub enum RType {
     I18nstring(String),
 }
 
+impl From<&RType> for String {
+    fn from(t: &RType) -> String {
+        match t {
+            RType::Null | RType::Bin(_) => String::default(),
+            RType::Char(v) => v.to_string(),
+            RType::String(v) | RType::I18nstring(v) => v.to_string(),
+            RType::Int8(v) => v.to_string(),
+            RType::Int16(v) => v.to_string(),
+            RType::Int32(v) => v.to_string(),
+            RType::Int64(v) => v.to_string(),
+            RType::StringArray(v) => v.join("") ,
+        }
+    }
+}
+
+impl From<&RType> for i32 {
+    fn from(t: &RType) -> i32 {
+        match t {
+            _ => i32::default(),
+            RType::Int32(v) => *v,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Index<T> {
     pub tag: T,
