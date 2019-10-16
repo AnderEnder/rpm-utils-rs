@@ -9,7 +9,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek};
 use std::path::Path;
 
-use header::{Index, RTag, RType, SigTag, Tag, Type, get_tag, get_tag_i32};
+use header::{get_tag, Index, RTag, RType, SigTag, Tag, Type};
 
 const MAGIC: [u8; 4] = [237, 171, 238, 219];
 const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
@@ -265,26 +265,26 @@ impl From<RPMFile> for RPMInfo {
         }
 
         let payload = RPMPayload {
-            size: get_tag_i32(&sigtags, &SigTag::PayloadSize),
-            format: get_tag(&tags, &Tag::Payloadformat),
-            compressor: get_tag(&tags, &Tag::Payloadcompressor),
-            flags: get_tag(&tags, &Tag::Payloadflags),
+            size: get_tag(&sigtags, SigTag::PayloadSize),
+            format: get_tag(&tags, Tag::Payloadformat),
+            compressor: get_tag(&tags, Tag::Payloadcompressor),
+            flags: get_tag(&tags, Tag::Payloadflags),
         };
 
         RPMInfo {
-            name: get_tag(&tags, &Tag::Name),
-            version: get_tag(&tags, &Tag::Version),
-            release: get_tag(&tags, &Tag::Release),
-            arch: get_tag(&tags, &Tag::Arch),
-            group: get_tag(&tags, &Tag::Group),
-            size: get_tag_i32(&tags, &Tag::Size),
-            license: get_tag(&tags, &Tag::License),
-            source_rpm: get_tag(&tags, &Tag::SourceRpm),
-            build_time: get_tag(&tags, &Tag::BuildTime),
-            build_host: get_tag(&tags, &Tag::BuildHost),
-            summary: get_tag(&tags, &Tag::Summary),
-            description: get_tag(&tags, &Tag::Description),
-            payload_size: get_tag_i32(&sigtags, &SigTag::PayloadSize),
+            name: get_tag(&tags, Tag::Name),
+            version: get_tag(&tags, Tag::Version),
+            release: get_tag(&tags, Tag::Release),
+            arch: get_tag(&tags, Tag::Arch),
+            group: get_tag(&tags, Tag::Group),
+            size: get_tag(&tags, Tag::Size),
+            license: get_tag(&tags, Tag::License),
+            source_rpm: get_tag(&tags, Tag::SourceRpm),
+            build_time: get_tag(&tags, Tag::BuildTime),
+            build_host: get_tag(&tags, Tag::BuildHost),
+            summary: get_tag(&tags, Tag::Summary),
+            description: get_tag(&tags, Tag::Description),
+            payload_size: get_tag(&sigtags, SigTag::PayloadSize),
         }
     }
 }
