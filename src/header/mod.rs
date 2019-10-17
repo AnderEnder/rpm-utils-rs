@@ -10,16 +10,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use std::collections::HashMap;
 use std::hash::Hash;
 
-#[derive(Debug, Clone)]
-pub struct RTag<T>
-where
-    T: FromPrimitive + Default,
-{
-    pub name: T,
-    pub value: RType,
-}
-
-type Tags<T> = HashMap<T, RType>;
+pub type Tags<T> = HashMap<T, RType>;
 
 pub fn get_tag<T, O>(tags: &Tags<T>, name: T) -> O
 where

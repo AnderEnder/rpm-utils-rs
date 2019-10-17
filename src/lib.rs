@@ -3,13 +3,13 @@ pub mod header;
 use chrono::{Local, TimeZone};
 use num_traits::FromPrimitive;
 use std::char;
-use std::collections::HashMap;
 use std::fmt;
 use std::fs::{File, OpenOptions};
+use std::hash::Hash;
 use std::io::{self, Read, Seek};
 use std::path::Path;
 
-use header::{get_tag, Index, RTag, RType, SigTag, Tag, Type};
+use header::{get_tag, Index, RType, SigTag, Tag, Tags, Type};
 
 const MAGIC: [u8; 4] = [237, 171, 238, 219];
 const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
@@ -148,10 +148,10 @@ pub struct RPMFile {
     pub lead: RawLead,
     pub signature: RawHeader,
     pub indexes: Vec<Index<SigTag>>,
-    pub sigtags: Vec<RTag<SigTag>>,
+    pub sigtags: Tags<SigTag>,
     pub header: RawHeader,
     pub h_indexes: Vec<Index<Tag>>,
-    pub tags: Vec<RTag<Tag>>,
+    pub tags: Tags<Tag>,
     pub file: File,
 }
 
@@ -229,7 +229,7 @@ pub struct RPMInfo {
     pub build_host: String,
     pub summary: String,
     pub description: String,
-    pub payload_size: i32,
+    pub payload: RPMPayload,
 }
 
 impl fmt::Display for RPMInfo {
@@ -252,39 +252,34 @@ impl fmt::Display for RPMInfo {
 }
 
 impl From<RPMFile> for RPMInfo {
-    fn from(item: RPMFile) -> Self {
-        let mut tags = HashMap::new();
-        let mut sigtags = HashMap::new();
-
-        for tag in &item.tags {
-            tags.insert(tag.name, tag.value.clone());
-        }
-
-        for tag in &item.sigtags {
-            sigtags.insert(tag.name, tag.value.clone());
-        }
-
+    fn from(rpm: RPMFile) -> Self {
         let payload = RPMPayload {
-            size: get_tag(&sigtags, SigTag::PayloadSize),
-            format: get_tag(&tags, Tag::Payloadformat),
-            compressor: get_tag(&tags, Tag::Payloadcompressor),
-            flags: get_tag(&tags, Tag::Payloadflags),
+            size: get_tag(&rpm.sigtags, SigTag::PayloadSize),
+            format: get_tag(&rpm.tags, Tag::Payloadformat),
+            compressor: get_tag(&rpm.tags, Tag::Payloadcompressor),
+            flags: get_tag(&rpm.tags, Tag::Payloadflags),
         };
 
+        let build_int: i32 = get_tag(&rpm.tags, Tag::BuildTime);
+        let build_time = Local
+            .timestamp(i64::from(build_int), 0)
+            .format("%c")
+            .to_string();
+
         RPMInfo {
-            name: get_tag(&tags, Tag::Name),
-            version: get_tag(&tags, Tag::Version),
-            release: get_tag(&tags, Tag::Release),
-            arch: get_tag(&tags, Tag::Arch),
-            group: get_tag(&tags, Tag::Group),
-            size: get_tag(&tags, Tag::Size),
-            license: get_tag(&tags, Tag::License),
-            source_rpm: get_tag(&tags, Tag::SourceRpm),
-            build_time: get_tag(&tags, Tag::BuildTime),
-            build_host: get_tag(&tags, Tag::BuildHost),
-            summary: get_tag(&tags, Tag::Summary),
-            description: get_tag(&tags, Tag::Description),
-            payload_size: get_tag(&sigtags, SigTag::PayloadSize),
+            name: get_tag(&rpm.tags, Tag::Name),
+            version: get_tag(&rpm.tags, Tag::Version),
+            release: get_tag(&rpm.tags, Tag::Release),
+            arch: get_tag(&rpm.tags, Tag::Arch),
+            group: get_tag(&rpm.tags, Tag::Group),
+            size: get_tag(&rpm.tags, Tag::Size),
+            license: get_tag(&rpm.tags, Tag::License),
+            source_rpm: get_tag(&rpm.tags, Tag::SourceRpm),
+            build_time,
+            build_host: get_tag(&rpm.tags, Tag::BuildHost),
+            summary: get_tag(&rpm.tags, Tag::Summary),
+            description: get_tag(&rpm.tags, Tag::Description),
+            payload,
         }
     }
 }
@@ -310,9 +305,9 @@ fn parse_strings(bytes: &[u8]) -> Vec<String> {
         .collect()
 }
 
-fn tags_from_raw<T>(indexes: &[Index<T>], data: &[u8]) -> Vec<RTag<T>>
+fn tags_from_raw<T>(indexes: &[Index<T>], data: &[u8]) -> Tags<T>
 where
-    T: FromPrimitive + Default + Copy,
+    T: FromPrimitive + Copy + Eq + Hash,
 {
     (0..indexes.len())
         .map(|i| {
@@ -389,10 +384,7 @@ where
                 }
             };
 
-            RTag {
-                name: item.tag,
-                value: tag_value,
-            }
+            (item.tag, tag_value)
         })
         .collect()
 }
