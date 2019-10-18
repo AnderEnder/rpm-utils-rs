@@ -266,6 +266,14 @@ impl From<RPMFile> for RPMInfo {
             .format("%c")
             .to_string();
 
+        let dirs: Vec<String> = get_tag(&rpm.tags, Tag::DirNames);
+        let basenames: Vec<String> = get_tag(&rpm.tags, Tag::Basenames);
+        let files: Vec<String> = dirs
+            .into_iter()
+            .zip(basenames.iter())
+            .map(|(x, y)| x + y)
+            .collect();
+
         RPMInfo {
             name: get_tag(&rpm.tags, Tag::Name),
             version: get_tag(&rpm.tags, Tag::Version),

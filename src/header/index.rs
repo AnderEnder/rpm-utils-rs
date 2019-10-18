@@ -47,6 +47,15 @@ impl From<RType> for String {
     }
 }
 
+impl From<RType> for Vec<String> {
+    fn from(t: RType) -> Vec<String> {
+        match t {
+            RType::StringArray(v) => v,
+            _ => Vec::new(),
+        }
+    }
+}
+
 impl From<RType> for i32 {
     fn from(t: RType) -> i32 {
         match t {
