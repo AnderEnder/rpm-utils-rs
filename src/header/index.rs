@@ -25,6 +25,7 @@ pub enum RType {
     Int8(i8),
     Int16(i16),
     Int32(i32),
+    Int32Array(Vec<i32>),
     Int64(i64),
     String(String),
     Bin(Vec<u8>),
@@ -43,6 +44,7 @@ impl From<RType> for String {
             RType::Int32(v) => v.to_string(),
             RType::Int64(v) => v.to_string(),
             RType::StringArray(v) => v.join(""),
+            _ => String::default(),
         }
     }
 }

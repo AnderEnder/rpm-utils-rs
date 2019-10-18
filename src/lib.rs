@@ -346,10 +346,16 @@ where
 
                 Type::Int32 => {
                     let ps = item.offset as usize;
-                    let mut bytes: [u8; 4] = Default::default();
-                    bytes.copy_from_slice(&data[ps..ps + 4]);
-                    let v = i32::from_be_bytes(bytes);
-                    RType::Int32(v)
+                    if item.count > 1 {
+                        let values: Vec<i32> = (0..item.count as usize)
+                            .map(|i| -> i32 {
+                                i32_from_bytes(&data, ps + i * 4)
+                            })
+                            .collect();
+                        RType::Int32Array(values)
+                    } else {
+                        RType::Int32(i32_from_bytes(&data, ps))
+                    }
                 }
 
                 Type::Int64 => {
@@ -395,4 +401,10 @@ where
             (item.tag, tag_value)
         })
         .collect()
+}
+
+fn i32_from_bytes(data: &[u8], position: usize) -> i32 {
+    let mut bytes: [u8; 4] = Default::default();
+    bytes.copy_from_slice(&data[position..position + 4]);
+    i32::from_be_bytes(bytes)
 }
