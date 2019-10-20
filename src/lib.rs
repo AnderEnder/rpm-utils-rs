@@ -320,37 +320,20 @@ where
     (0..indexes.len())
         .map(|i| {
             let item = &indexes[i];
+            let ps = item.offset as usize;
             let tag_value = match item.itype {
                 Type::Null => RType::Null,
 
-                Type::Char => {
-                    let ps = item.offset as usize;
-                    let mut bytes: [u8; 4] = Default::default();
-                    bytes.copy_from_slice(&data[ps..ps + 4]);
-                    let d = u32::from_be_bytes(bytes);
-                    let v = char::from_u32(d).unwrap_or_default();
-                    RType::Char(v)
-                }
+                Type::Char => RType::Char(char_from_bytes(&data, ps)),
 
-                Type::Int8 => {
-                    let v = i8::from_be_bytes([data[item.offset as usize]; 1]);
-                    RType::Int8(v)
-                }
+                Type::Int8 => RType::Int8(i8::from_be_bytes([data[ps]; 1])),
 
-                Type::Int16 => {
-                    let ps = item.offset as usize;
-                    let s: [u8; 2] = [data[ps], data[ps + 1]];
-                    let v = i16::from_be_bytes(s);
-                    RType::Int16(v)
-                }
+                Type::Int16 => RType::Int16(i16_from_bytes(&data, ps)),
 
                 Type::Int32 => {
-                    let ps = item.offset as usize;
                     if item.count > 1 {
                         let values: Vec<i32> = (0..item.count as usize)
-                            .map(|i| -> i32 {
-                                i32_from_bytes(&data, ps + i * 4)
-                            })
+                            .map(|i| -> i32 { i32_from_bytes(&data, ps + i * 4) })
                             .collect();
                         RType::Int32Array(values)
                     } else {
@@ -358,42 +341,29 @@ where
                     }
                 }
 
-                Type::Int64 => {
-                    let ps = item.offset as usize;
-                    let mut bytes: [u8; 8] = Default::default();
-                    bytes.copy_from_slice(&data[ps..ps + 8]);
-                    let v = i64::from_be_bytes(bytes);
-                    RType::Int64(v)
-                }
+                Type::Int64 => RType::Int64(i64_from_bytes(&data, ps)),
 
                 Type::String => {
-                    let ps = item.offset as usize;
                     let ps2 = indexes[i + 1].offset as usize;
-                    let bytes = &data[ps..ps2];
-                    let v = parse_string(bytes);
+                    let v = parse_string(&data[ps..ps2]);
                     RType::String(v)
                 }
 
                 Type::Bin => {
-                    let ps = item.offset as usize;
                     let ps2 = ps + item.count as usize;
                     let bytes = &data[ps..ps2];
                     RType::Bin(bytes.to_vec())
                 }
 
                 Type::StringArray => {
-                    let ps = item.offset as usize;
                     let ps2 = indexes[i + 1].offset as usize;
-                    let bytes = &data[ps..ps2];
-                    let v = parse_strings(bytes);
+                    let v = parse_strings(&data[ps..ps2]);
                     RType::StringArray(v)
                 }
 
                 Type::I18nstring => {
-                    let ps = item.offset as usize;
                     let ps2 = indexes[i + 1].offset as usize;
-                    let bytes = &data[ps..ps2];
-                    let v = parse_string(bytes);
+                    let v = parse_string(&data[ps..ps2]);
                     RType::I18nstring(v)
                 }
             };
@@ -403,8 +373,27 @@ where
         .collect()
 }
 
+fn i16_from_bytes(data: &[u8], position: usize) -> i16 {
+    let mut bytes: [u8; 2] = Default::default();
+    bytes.copy_from_slice(&data[position..position + 2]);
+    i16::from_be_bytes(bytes)
+}
+
 fn i32_from_bytes(data: &[u8], position: usize) -> i32 {
     let mut bytes: [u8; 4] = Default::default();
     bytes.copy_from_slice(&data[position..position + 4]);
     i32::from_be_bytes(bytes)
+}
+
+fn i64_from_bytes(data: &[u8], position: usize) -> i64 {
+    let mut bytes: [u8; 8] = Default::default();
+    bytes.copy_from_slice(&data[position..position + 8]);
+    i64::from_be_bytes(bytes)
+}
+
+fn char_from_bytes(data: &[u8], position: usize) -> char {
+    let mut bytes: [u8; 4] = Default::default();
+    bytes.copy_from_slice(&data[position..position + 4]);
+    let value = u32::from_be_bytes(bytes);
+    char::from_u32(value).unwrap_or_default()
 }
