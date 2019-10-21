@@ -23,10 +23,13 @@ pub enum RType {
     Null,
     Char(char),
     Int8(i8),
+    Int8Array(Vec<i8>),
     Int16(i16),
+    Int16Array(Vec<i16>),
     Int32(i32),
     Int32Array(Vec<i32>),
     Int64(i64),
+    Int64Array(Vec<i64>),
     String(String),
     Bin(Vec<u8>),
     StringArray(Vec<String>),
@@ -71,8 +74,8 @@ impl From<RType> for i32 {
 pub struct Index<T> {
     pub tag: T,
     pub itype: Type,
-    pub offset: i32,
-    pub count: i32,
+    pub offset: usize,
+    pub count: usize,
 }
 
 impl<T> Index<T>
@@ -108,8 +111,8 @@ where
         Ok(Index {
             tag,
             itype,
-            offset,
-            count,
+            offset: offset as usize,
+            count: count as usize,
         })
     }
 }

@@ -107,7 +107,7 @@ impl fmt::Debug for RawLead {
 pub struct RawHeader {
     pub magic: [u8; 4],
     pub reserved: [u8; 4],
-    pub nindex: i32,
+    pub nindex: usize,
     pub hsize: i32,
 }
 
@@ -137,7 +137,7 @@ impl RawHeader {
         Ok(RawHeader {
             magic,
             reserved,
-            nindex,
+            nindex: nindex as usize,
             hsize,
         })
     }
@@ -162,7 +162,7 @@ impl RPMFile {
 
         let signature = RawHeader::read(&mut file)?;
 
-        let mut indexes = Vec::with_capacity(signature.nindex as usize);
+        let mut indexes = Vec::with_capacity(signature.nindex);
         for _ in 0..signature.nindex {
             let index = Index::read(&mut file)?;
             indexes.push(index);
@@ -181,7 +181,7 @@ impl RPMFile {
 
         let header = RawHeader::read(&mut file)?;
 
-        let mut h_indexes = Vec::with_capacity(signature.nindex as usize);
+        let mut h_indexes = Vec::with_capacity(signature.nindex);
         for _ in 0..header.nindex {
             let index = Index::read(&mut file)?;
             h_indexes.push(index);
@@ -320,19 +320,38 @@ where
     (0..indexes.len())
         .map(|i| {
             let item = &indexes[i];
-            let ps = item.offset as usize;
+            let ps = item.offset;
+
             let tag_value = match item.itype {
                 Type::Null => RType::Null,
 
                 Type::Char => RType::Char(char_from_bytes(&data, ps)),
 
-                Type::Int8 => RType::Int8(i8::from_be_bytes([data[ps]; 1])),
+                Type::Int8 => {
+                    if item.count > 1 {
+                        let values: Vec<i8> = (0..item.count)
+                            .map(|i| -> i8 { i8::from_be_bytes([data[ps + i]; 1]) })
+                            .collect();
+                        RType::Int8Array(values)
+                    } else {
+                        RType::Int8(i8::from_be_bytes([data[ps]; 1]))
+                    }
+                }
 
-                Type::Int16 => RType::Int16(i16_from_bytes(&data, ps)),
+                Type::Int16 => {
+                    if item.count > 1 {
+                        let values: Vec<i16> = (0..item.count)
+                            .map(|i| -> i16 { i16_from_bytes(&data, ps + i * 2) })
+                            .collect();
+                        RType::Int16Array(values)
+                    } else {
+                        RType::Int16(i16_from_bytes(&data, ps))
+                    }
+                }
 
                 Type::Int32 => {
                     if item.count > 1 {
-                        let values: Vec<i32> = (0..item.count as usize)
+                        let values: Vec<i32> = (0..item.count)
                             .map(|i| -> i32 { i32_from_bytes(&data, ps + i * 4) })
                             .collect();
                         RType::Int32Array(values)
@@ -341,28 +360,37 @@ where
                     }
                 }
 
-                Type::Int64 => RType::Int64(i64_from_bytes(&data, ps)),
+                Type::Int64 => {
+                    if item.count > 1 {
+                        let values: Vec<i64> = (0..item.count)
+                            .map(|i| -> i64 { i64_from_bytes(&data, ps + i * 8) })
+                            .collect();
+                        RType::Int64Array(values)
+                    } else {
+                        RType::Int64(i64_from_bytes(&data, ps))
+                    }
+                }
 
                 Type::String => {
-                    let ps2 = indexes[i + 1].offset as usize;
+                    let ps2 = indexes[i + 1].offset;
                     let v = parse_string(&data[ps..ps2]);
                     RType::String(v)
                 }
 
                 Type::Bin => {
-                    let ps2 = ps + item.count as usize;
+                    let ps2 = ps + item.count;
                     let bytes = &data[ps..ps2];
                     RType::Bin(bytes.to_vec())
                 }
 
                 Type::StringArray => {
-                    let ps2 = indexes[i + 1].offset as usize;
+                    let ps2 = indexes[i + 1].offset;
                     let v = parse_strings(&data[ps..ps2]);
                     RType::StringArray(v)
                 }
 
                 Type::I18nstring => {
-                    let ps2 = indexes[i + 1].offset as usize;
+                    let ps2 = indexes[i + 1].offset;
                     let v = parse_string(&data[ps..ps2]);
                     RType::I18nstring(v)
                 }
