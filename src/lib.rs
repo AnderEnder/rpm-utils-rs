@@ -341,33 +341,33 @@ where
                 Type::Int16 => {
                     if item.count > 1 {
                         let values: Vec<i16> = (0..item.count)
-                            .map(|i| -> i16 { i16_from_bytes(&data, ps + i * 2) })
+                            .map(|i| -> i16 { i16::from_bytes(&data, ps + i * 2) })
                             .collect();
                         RType::Int16Array(values)
                     } else {
-                        RType::Int16(i16_from_bytes(&data, ps))
+                        RType::Int16(i16::from_bytes(&data, ps))
                     }
                 }
 
                 Type::Int32 => {
                     if item.count > 1 {
                         let values: Vec<i32> = (0..item.count)
-                            .map(|i| -> i32 { i32_from_bytes(&data, ps + i * 4) })
+                            .map(|i| -> i32 { i32::from_bytes(&data, ps + i * 4) })
                             .collect();
                         RType::Int32Array(values)
                     } else {
-                        RType::Int32(i32_from_bytes(&data, ps))
+                        RType::Int32(i32::from_bytes(&data, ps))
                     }
                 }
 
                 Type::Int64 => {
                     if item.count > 1 {
                         let values: Vec<i64> = (0..item.count)
-                            .map(|i| -> i64 { i64_from_bytes(&data, ps + i * 8) })
+                            .map(|i| -> i64 { i64::from_bytes(&data, ps + i * 8) })
                             .collect();
                         RType::Int64Array(values)
                     } else {
-                        RType::Int64(i64_from_bytes(&data, ps))
+                        RType::Int64(i64::from_bytes(&data, ps))
                     }
                 }
 
@@ -401,27 +401,29 @@ where
         .collect()
 }
 
-fn i16_from_bytes(data: &[u8], position: usize) -> i16 {
-    let mut bytes: [u8; 2] = Default::default();
-    bytes.copy_from_slice(&data[position..position + 2]);
-    i16::from_be_bytes(bytes)
-}
-
-fn i32_from_bytes(data: &[u8], position: usize) -> i32 {
-    let mut bytes: [u8; 4] = Default::default();
-    bytes.copy_from_slice(&data[position..position + 4]);
-    i32::from_be_bytes(bytes)
-}
-
-fn i64_from_bytes(data: &[u8], position: usize) -> i64 {
-    let mut bytes: [u8; 8] = Default::default();
-    bytes.copy_from_slice(&data[position..position + 8]);
-    i64::from_be_bytes(bytes)
-}
-
 fn char_from_bytes(data: &[u8], position: usize) -> char {
     let mut bytes: [u8; 4] = Default::default();
     bytes.copy_from_slice(&data[position..position + 4]);
     let value = u32::from_be_bytes(bytes);
     char::from_u32(value).unwrap_or_default()
 }
+
+trait FromBytes {
+    fn from_bytes (data: &[u8], position: usize) -> Self;
+}
+
+macro_rules! from_bytes (
+    ($item:ty, $number:expr) => (
+        impl FromBytes for $item {
+            fn from_bytes(data: &[u8], position: usize) -> $item {
+                let mut bytes: [u8; $number] = Default::default();
+                bytes.copy_from_slice(&data[position..position + $number]);
+                <$item>::from_be_bytes(bytes)
+            }
+        }
+    );
+);
+
+from_bytes!(i16, 2);
+from_bytes!(i32, 4);
+from_bytes!(i64, 8);
