@@ -325,7 +325,7 @@ where
             let tag_value = match item.itype {
                 Type::Null => RType::Null,
 
-                Type::Char => RType::Char(char_from_bytes(&data, ps)),
+                Type::Char => RType::Char(char::from_bytes(&data, ps)),
 
                 Type::Int8 => {
                     if item.count > 1 {
@@ -401,15 +401,14 @@ where
         .collect()
 }
 
-fn char_from_bytes(data: &[u8], position: usize) -> char {
-    let mut bytes: [u8; 4] = Default::default();
-    bytes.copy_from_slice(&data[position..position + 4]);
-    let value = u32::from_be_bytes(bytes);
-    char::from_u32(value).unwrap_or_default()
+trait FromBytes {
+    fn from_bytes(data: &[u8], position: usize) -> Self;
 }
 
-trait FromBytes {
-    fn from_bytes (data: &[u8], position: usize) -> Self;
+impl FromBytes for char {
+    fn from_bytes(data: &[u8], position: usize) -> char {
+        char::from_u32(u32::from_bytes(&data, position)).unwrap_or_default()
+    }
 }
 
 macro_rules! from_bytes (
@@ -427,3 +426,4 @@ macro_rules! from_bytes (
 from_bytes!(i16, 2);
 from_bytes!(i32, 4);
 from_bytes!(i64, 8);
+from_bytes!(u32, 4);
