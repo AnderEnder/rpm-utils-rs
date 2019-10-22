@@ -52,23 +52,30 @@ impl From<RType> for String {
     }
 }
 
-impl From<RType> for Vec<String> {
-    fn from(t: RType) -> Vec<String> {
-        match t {
-            RType::StringArray(v) => v,
-            _ => Vec::new(),
+macro_rules! from_rtype (
+    ($from:path, $to:ty) => (
+        impl From<RType> for $to {
+            fn from(t: RType) -> $to {
+                match t {
+                    $from(v) => v,
+                    _ => Default::default(),
+                }
+            }
         }
-    }
-}
+    );
+);
 
-impl From<RType> for i32 {
-    fn from(t: RType) -> i32 {
-        match t {
-            RType::Int32(v) => v,
-            _ => i32::default(),
-        }
-    }
-}
+from_rtype!(RType::Char, char);
+from_rtype!(RType::Int8, i8);
+from_rtype!(RType::Int16, i16);
+from_rtype!(RType::Int32, i32);
+from_rtype!(RType::Int64, i64);
+from_rtype!(RType::Int8Array, Vec<i8>);
+from_rtype!(RType::Int16Array, Vec<i16>);
+from_rtype!(RType::Int32Array, Vec<i32>);
+from_rtype!(RType::Int64Array, Vec<i64>);
+from_rtype!(RType::StringArray, Vec<String>);
+from_rtype!(RType::Bin, Vec<u8>);
 
 #[derive(Debug)]
 pub struct Index<T> {

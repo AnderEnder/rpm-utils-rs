@@ -213,6 +213,7 @@ pub struct RPMPayload {
     pub format: String,
     pub compressor: String,
     pub flags: String,
+    pub files: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -253,11 +254,21 @@ impl fmt::Display for RPMInfo {
 
 impl From<RPMFile> for RPMInfo {
     fn from(rpm: RPMFile) -> Self {
+        let dirs: Vec<String> = get_tag(&rpm.tags, Tag::DirNames);
+        let dir_indexes: Vec<i32> = get_tag(&rpm.tags, Tag::Dirindexes);
+        let basenames: Vec<String> = get_tag(&rpm.tags, Tag::Basenames);
+        let files: Vec<String> = basenames
+            .iter()
+            .zip(dir_indexes.iter())
+            .map(|(x, y)| dirs[*y as usize].clone() + x)
+            .collect();
+
         let payload = RPMPayload {
             size: get_tag(&rpm.sigtags, SigTag::PayloadSize),
             format: get_tag(&rpm.tags, Tag::Payloadformat),
             compressor: get_tag(&rpm.tags, Tag::Payloadcompressor),
             flags: get_tag(&rpm.tags, Tag::Payloadflags),
+            files,
         };
 
         let build_int: i32 = get_tag(&rpm.tags, Tag::BuildTime);
@@ -265,14 +276,6 @@ impl From<RPMFile> for RPMInfo {
             .timestamp(i64::from(build_int), 0)
             .format("%c")
             .to_string();
-
-        let dirs: Vec<String> = get_tag(&rpm.tags, Tag::DirNames);
-        let basenames: Vec<String> = get_tag(&rpm.tags, Tag::Basenames);
-        let files: Vec<String> = dirs
-            .into_iter()
-            .zip(basenames.iter())
-            .map(|(x, y)| x + y)
-            .collect();
 
         RPMInfo {
             name: get_tag(&rpm.tags, Tag::Name),
