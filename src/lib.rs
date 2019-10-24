@@ -295,7 +295,7 @@ impl From<RPMFile> for RPMInfo {
                         group,
                         flags: flags[i],
                         mtime: mtimes[i],
-                        digest: "".to_owned(), // digest[i],
+                        digest: digests[i],
                         mode: modes[i],
                         linkname,
                         device: devices[i],
@@ -349,10 +349,10 @@ fn parse_string(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes2).to_string()
 }
 
-fn parse_strings(bytes: &[u8]) -> Vec<String> {
+fn parse_strings(bytes: &[u8], count: usize) -> Vec<String> {
     bytes
         .split(|x| *x == 0)
-        .filter(|x| !x.is_empty())
+        .take(count)
         .map(|b| String::from_utf8_lossy(b).to_string())
         .collect()
 }
@@ -429,7 +429,7 @@ where
 
                 Type::StringArray => {
                     let ps2 = indexes[i + 1].offset;
-                    let v = parse_strings(&data[ps..ps2]);
+                    let v = parse_strings(&data[ps..ps2], item.count);
                     RType::StringArray(v)
                 }
 
