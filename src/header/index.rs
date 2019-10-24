@@ -24,8 +24,8 @@ pub enum RType {
     Char(char),
     Int8(i8),
     Int8Array(Vec<i8>),
-    Int16(i16),
-    Int16Array(Vec<i16>),
+    Int16(u16),
+    Int16Array(Vec<u16>),
     Int32(i32),
     Int32Array(Vec<i32>),
     Int64(i64),
@@ -67,11 +67,11 @@ macro_rules! from_rtype (
 
 from_rtype!(RType::Char, char);
 from_rtype!(RType::Int8, i8);
-from_rtype!(RType::Int16, i16);
+from_rtype!(RType::Int16, u16);
 from_rtype!(RType::Int32, i32);
 from_rtype!(RType::Int64, i64);
 from_rtype!(RType::Int8Array, Vec<i8>);
-from_rtype!(RType::Int16Array, Vec<i16>);
+from_rtype!(RType::Int16Array, Vec<u16>);
 from_rtype!(RType::Int32Array, Vec<i32>);
 from_rtype!(RType::Int64Array, Vec<i64>);
 from_rtype!(RType::StringArray, Vec<String>);

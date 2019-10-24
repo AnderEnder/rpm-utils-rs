@@ -1,6 +1,7 @@
 pub mod header;
 
 use chrono::{Local, TimeZone};
+use itertools::multizip;
 use num_traits::FromPrimitive;
 use std::char;
 use std::fmt;
@@ -208,12 +209,27 @@ impl RPMFile {
 }
 
 #[derive(Debug)]
+pub struct FileInfo {
+    pub name: String,
+    pub size: i32,
+    pub user: String,
+    pub group: String,
+    pub flags: i32,
+    pub mtime: i32,
+    pub digest: String,
+    pub mode: u16,
+    pub linkname: String,
+    pub device: i32,
+    pub inode: i32,
+}
+
+#[derive(Debug)]
 pub struct RPMPayload {
     pub size: i32,
     pub format: String,
     pub compressor: String,
     pub flags: String,
-    pub files: Vec<String>,
+    pub files: Vec<FileInfo>,
 }
 
 #[derive(Debug)]
@@ -257,11 +273,36 @@ impl From<RPMFile> for RPMInfo {
         let dirs: Vec<String> = get_tag(&rpm.tags, Tag::DirNames);
         let dir_indexes: Vec<i32> = get_tag(&rpm.tags, Tag::Dirindexes);
         let basenames: Vec<String> = get_tag(&rpm.tags, Tag::Basenames);
-        let files: Vec<String> = basenames
-            .iter()
-            .zip(dir_indexes.iter())
-            .map(|(x, y)| dirs[*y as usize].clone() + x)
-            .collect();
+        let filesizes: Vec<i32> = get_tag(&rpm.tags, Tag::FileSizes);
+        let users: Vec<String> = get_tag(&rpm.tags, Tag::FileUserName);
+        let groups: Vec<String> = get_tag(&rpm.tags, Tag::FileGroupName);
+        let flags: Vec<i32> = get_tag(&rpm.tags, Tag::FileFlags);
+        let mtimes: Vec<i32> = get_tag(&rpm.tags, Tag::FileMTimes);
+        let linknames: Vec<String> = get_tag(&rpm.tags, Tag::FileGroupName);
+        let modes: Vec<u16> = get_tag(&rpm.tags, Tag::FileModes);
+        let devices: Vec<i32> = get_tag(&rpm.tags, Tag::FileDevices);
+        let inodes: Vec<i32> = get_tag(&rpm.tags, Tag::FileInodes);
+        let digests: Vec<String> = get_tag(&rpm.tags, Tag::FileMD5s);
+
+        let files: Vec<FileInfo> =
+            multizip((basenames, dir_indexes, filesizes, users, groups, linknames))
+                .enumerate()
+                .map(|(i, (name, index, size, user, group, linkname))| {
+                    FileInfo {
+                        name: dirs[index as usize].clone() + &name,
+                        size,
+                        user,
+                        group,
+                        flags: flags[i],
+                        mtime: mtimes[i],
+                        digest: "".to_owned(), // digest[i],
+                        mode: modes[i],
+                        linkname,
+                        device: devices[i],
+                        inode: inodes[i],
+                    }
+                })
+                .collect();
 
         let payload = RPMPayload {
             size: get_tag(&rpm.sigtags, SigTag::PayloadSize),
@@ -333,7 +374,7 @@ where
                 Type::Int8 => {
                     if item.count > 1 {
                         let values: Vec<i8> = (0..item.count)
-                            .map(|i| -> i8 { i8::from_be_bytes([data[ps + i]; 1]) })
+                            .map(|i| i8::from_be_bytes([data[ps + i]; 1]))
                             .collect();
                         RType::Int8Array(values)
                     } else {
@@ -343,19 +384,19 @@ where
 
                 Type::Int16 => {
                     if item.count > 1 {
-                        let values: Vec<i16> = (0..item.count)
-                            .map(|i| -> i16 { i16::from_bytes(&data, ps + i * 2) })
+                        let values: Vec<u16> = (0..item.count)
+                            .map(|i| u16::from_bytes(&data, ps + i * 2))
                             .collect();
                         RType::Int16Array(values)
                     } else {
-                        RType::Int16(i16::from_bytes(&data, ps))
+                        RType::Int16(u16::from_bytes(&data, ps))
                     }
                 }
 
                 Type::Int32 => {
                     if item.count > 1 {
                         let values: Vec<i32> = (0..item.count)
-                            .map(|i| -> i32 { i32::from_bytes(&data, ps + i * 4) })
+                            .map(|i| i32::from_bytes(&data, ps + i * 4))
                             .collect();
                         RType::Int32Array(values)
                     } else {
@@ -366,7 +407,7 @@ where
                 Type::Int64 => {
                     if item.count > 1 {
                         let values: Vec<i64> = (0..item.count)
-                            .map(|i| -> i64 { i64::from_bytes(&data, ps + i * 8) })
+                            .map(|i| i64::from_bytes(&data, ps + i * 8))
                             .collect();
                         RType::Int64Array(values)
                     } else {
@@ -429,4 +470,5 @@ macro_rules! from_bytes (
 from_bytes!(i16, 2);
 from_bytes!(i32, 4);
 from_bytes!(i64, 8);
+from_bytes!(u16, 2);
 from_bytes!(u32, 4);

@@ -26,12 +26,12 @@ fn run(args: Args) -> Result<(), io::Error> {
         println!("{:?}", file.lead);
         println!("{:?}", file.signature);
         println!("{:?}", file.indexes);
-        println!("{:?}", file.sigtags);
-        println!("{:?}", file.header);
+        println!("{:#?}", file.sigtags);
+        println!("{:#?}", file.header);
         println!("{:?}", file.h_indexes);
-        println!("{:?}", file.tags);
+        println!("{:#?}", file.tags);
         let info: RPMInfo = file.into();
-        println!("{:?}", info);
+        println!("{:#?}", info);
     } else {
         let info: RPMInfo = file.into();
         println!("{}", info);
