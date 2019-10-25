@@ -19,11 +19,11 @@ pub struct RawLead {
     pub magic: [u8; 4],
     pub major: u8,
     pub minor: u8,
-    pub rpm_type: i16,
-    pub archnum: i16,
+    pub rpm_type: u16,
+    pub archnum: u16,
     pub name: [u8; 66],
-    pub osnum: i16,
-    pub signature_type: i16,
+    pub osnum: u16,
+    pub signature_type: u16,
     pub reserved: [u8; 16],
 }
 
@@ -46,19 +46,19 @@ impl RawLead {
 
         let mut rpm_type_be = [0_u8; 2];
         fh.read_exact(&mut rpm_type_be)?;
-        let rpm_type = i16::from_be_bytes(rpm_type_be);
+        let rpm_type = u16::from_be_bytes(rpm_type_be);
         let mut archnum_be = [0_u8; 2];
         fh.read_exact(&mut archnum_be)?;
-        let archnum = i16::from_be_bytes(archnum_be);
+        let archnum = u16::from_be_bytes(archnum_be);
 
         let mut name = [0_u8; 66];
         fh.read_exact(&mut name)?;
         let mut osnum_be = [0_u8; 2];
         fh.read_exact(&mut osnum_be)?;
-        let osnum = i16::from_be_bytes(osnum_be);
+        let osnum = u16::from_be_bytes(osnum_be);
         let signature_type_be = [0_u8; 2];
         fh.read_exact(&mut osnum_be)?;
-        let signature_type = i16::from_be_bytes(signature_type_be);
+        let signature_type = u16::from_be_bytes(signature_type_be);
         let mut reserved = [0_u8; 16];
         fh.read_exact(&mut reserved)?;
 
@@ -109,7 +109,7 @@ pub struct RawHeader {
     pub magic: [u8; 4],
     pub reserved: [u8; 4],
     pub nindex: usize,
-    pub hsize: i32,
+    pub hsize: u32,
 }
 
 impl RawHeader {
@@ -129,11 +129,11 @@ impl RawHeader {
 
         let mut nindex_be = [0_u8; 4];
         fh.read_exact(&mut nindex_be)?;
-        let nindex = i32::from_be_bytes(nindex_be);
+        let nindex = u32::from_be_bytes(nindex_be);
 
         let mut hsize_be = [0_u8; 4];
         fh.read_exact(&mut hsize_be)?;
-        let hsize = i32::from_be_bytes(hsize_be);
+        let hsize = u32::from_be_bytes(hsize_be);
 
         Ok(RawHeader {
             magic,

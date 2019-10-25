@@ -92,8 +92,8 @@ where
     pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
         let mut tag_be = [0_u8; 4];
         fh.read_exact(&mut tag_be)?;
-        let tag_id = i32::from_be_bytes(tag_be);
-        let tag = T::from_i32(tag_id).unwrap_or_else(|| {
+        let tag_id = u32::from_be_bytes(tag_be);
+        let tag = T::from_u32(tag_id).unwrap_or_else(|| {
             println!("Unknown tag {}", tag_id);
             T::default()
         });
@@ -101,19 +101,19 @@ where
         let mut itype_be = [0_u8; 4];
         fh.read_exact(&mut itype_be)?;
 
-        let type_id = i32::from_be_bytes(itype_be);
-        let itype = Type::from_i32(type_id).unwrap_or_else(|| {
+        let type_id = u32::from_be_bytes(itype_be);
+        let itype = Type::from_u32(type_id).unwrap_or_else(|| {
             println!("Unknown type {}", type_id);
             Type::Null
         });
 
         let mut offset_be = [0_u8; 4];
         fh.read_exact(&mut offset_be)?;
-        let offset = i32::from_be_bytes(offset_be);
+        let offset = u32::from_be_bytes(offset_be);
 
         let mut count_be = [0_u8; 4];
         fh.read_exact(&mut count_be)?;
-        let count = i32::from_be_bytes(count_be);
+        let count = u32::from_be_bytes(count_be);
 
         Ok(Index {
             tag,
