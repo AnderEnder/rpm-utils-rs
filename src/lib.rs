@@ -211,7 +211,7 @@ impl RPMFile {
 #[derive(Debug)]
 pub struct FileInfo {
     pub name: String,
-    pub size: u32,
+    pub size: u64,
     pub user: String,
     pub group: String,
     pub flags: u32,
@@ -225,7 +225,7 @@ pub struct FileInfo {
 
 #[derive(Debug)]
 pub struct RPMPayload {
-    pub size: u32,
+    pub size: u64,
     pub format: String,
     pub compressor: String,
     pub flags: String,
@@ -239,7 +239,7 @@ pub struct RPMInfo {
     pub release: String,
     pub arch: String,
     pub group: String,
-    pub size: u32,
+    pub size: u64,
     pub license: String,
     pub source_rpm: String,
     pub build_time: String,
@@ -273,7 +273,7 @@ impl From<RPMFile> for RPMInfo {
         let dirs: Vec<String> = get_tag(&rpm.tags, Tag::DirNames);
         let dir_indexes: Vec<u32> = get_tag(&rpm.tags, Tag::Dirindexes);
         let basenames: Vec<String> = get_tag(&rpm.tags, Tag::Basenames);
-        let filesizes: Vec<u32> = get_tag(&rpm.tags, Tag::FileSizes);
+        let filesizes: Vec<u64> = get_tag(&rpm.tags, Tag::FileSizes);
         let users: Vec<String> = get_tag(&rpm.tags, Tag::FileUserName);
         let groups: Vec<String> = get_tag(&rpm.tags, Tag::FileGroupName);
         let flags: Vec<u32> = get_tag(&rpm.tags, Tag::FileFlags);
@@ -284,25 +284,32 @@ impl From<RPMFile> for RPMInfo {
         let inodes: Vec<u32> = get_tag(&rpm.tags, Tag::FileInodes);
         let digests: Vec<String> = get_tag(&rpm.tags, Tag::FileMD5s);
 
-        let files: Vec<FileInfo> =
-            multizip((basenames, dir_indexes, filesizes, users, groups, linknames, digests))
-                .enumerate()
-                .map(|(i, (name, index, size, user, group, linkname, digest))| {
-                    FileInfo {
-                        name: dirs[index as usize].clone() + &name,
-                        size,
-                        user,
-                        group,
-                        flags: flags[i],
-                        mtime: mtimes[i],
-                        digest,
-                        mode: modes[i],
-                        linkname,
-                        device: devices[i],
-                        inode: inodes[i],
-                    }
-                })
-                .collect();
+        let files: Vec<FileInfo> = multizip((
+            basenames,
+            dir_indexes,
+            filesizes,
+            users,
+            groups,
+            linknames,
+            digests,
+        ))
+        .enumerate()
+        .map(
+            |(i, (name, index, size, user, group, linkname, digest))| FileInfo {
+                name: dirs[index as usize].clone() + &name,
+                size,
+                user,
+                group,
+                flags: flags[i],
+                mtime: mtimes[i],
+                digest,
+                mode: modes[i],
+                linkname,
+                device: devices[i],
+                inode: inodes[i],
+            },
+        )
+        .collect();
 
         let payload = RPMPayload {
             size: get_tag(&rpm.sigtags, SigTag::PayloadSize),
