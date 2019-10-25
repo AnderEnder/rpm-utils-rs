@@ -211,21 +211,21 @@ impl RPMFile {
 #[derive(Debug)]
 pub struct FileInfo {
     pub name: String,
-    pub size: i32,
+    pub size: u32,
     pub user: String,
     pub group: String,
-    pub flags: i32,
-    pub mtime: i32,
+    pub flags: u32,
+    pub mtime: u32,
     pub digest: String,
     pub mode: u16,
     pub linkname: String,
-    pub device: i32,
-    pub inode: i32,
+    pub device: u32,
+    pub inode: u32,
 }
 
 #[derive(Debug)]
 pub struct RPMPayload {
-    pub size: i32,
+    pub size: u32,
     pub format: String,
     pub compressor: String,
     pub flags: String,
@@ -239,7 +239,7 @@ pub struct RPMInfo {
     pub release: String,
     pub arch: String,
     pub group: String,
-    pub size: i32,
+    pub size: u32,
     pub license: String,
     pub source_rpm: String,
     pub build_time: String,
@@ -271,23 +271,23 @@ impl fmt::Display for RPMInfo {
 impl From<RPMFile> for RPMInfo {
     fn from(rpm: RPMFile) -> Self {
         let dirs: Vec<String> = get_tag(&rpm.tags, Tag::DirNames);
-        let dir_indexes: Vec<i32> = get_tag(&rpm.tags, Tag::Dirindexes);
+        let dir_indexes: Vec<u32> = get_tag(&rpm.tags, Tag::Dirindexes);
         let basenames: Vec<String> = get_tag(&rpm.tags, Tag::Basenames);
-        let filesizes: Vec<i32> = get_tag(&rpm.tags, Tag::FileSizes);
+        let filesizes: Vec<u32> = get_tag(&rpm.tags, Tag::FileSizes);
         let users: Vec<String> = get_tag(&rpm.tags, Tag::FileUserName);
         let groups: Vec<String> = get_tag(&rpm.tags, Tag::FileGroupName);
-        let flags: Vec<i32> = get_tag(&rpm.tags, Tag::FileFlags);
-        let mtimes: Vec<i32> = get_tag(&rpm.tags, Tag::FileMTimes);
+        let flags: Vec<u32> = get_tag(&rpm.tags, Tag::FileFlags);
+        let mtimes: Vec<u32> = get_tag(&rpm.tags, Tag::FileMTimes);
         let linknames: Vec<String> = get_tag(&rpm.tags, Tag::FileGroupName);
         let modes: Vec<u16> = get_tag(&rpm.tags, Tag::FileModes);
-        let devices: Vec<i32> = get_tag(&rpm.tags, Tag::FileDevices);
-        let inodes: Vec<i32> = get_tag(&rpm.tags, Tag::FileInodes);
+        let devices: Vec<u32> = get_tag(&rpm.tags, Tag::FileDevices);
+        let inodes: Vec<u32> = get_tag(&rpm.tags, Tag::FileInodes);
         let digests: Vec<String> = get_tag(&rpm.tags, Tag::FileMD5s);
 
         let files: Vec<FileInfo> =
-            multizip((basenames, dir_indexes, filesizes, users, groups, linknames))
+            multizip((basenames, dir_indexes, filesizes, users, groups, linknames, digests))
                 .enumerate()
-                .map(|(i, (name, index, size, user, group, linkname))| {
+                .map(|(i, (name, index, size, user, group, linkname, digest))| {
                     FileInfo {
                         name: dirs[index as usize].clone() + &name,
                         size,
@@ -295,7 +295,7 @@ impl From<RPMFile> for RPMInfo {
                         group,
                         flags: flags[i],
                         mtime: mtimes[i],
-                        digest: digests[i],
+                        digest,
                         mode: modes[i],
                         linkname,
                         device: devices[i],
@@ -312,7 +312,7 @@ impl From<RPMFile> for RPMInfo {
             files,
         };
 
-        let build_int: i32 = get_tag(&rpm.tags, Tag::BuildTime);
+        let build_int: u32 = get_tag(&rpm.tags, Tag::BuildTime);
         let build_time = Local
             .timestamp(i64::from(build_int), 0)
             .format("%c")
@@ -373,12 +373,12 @@ where
 
                 Type::Int8 => {
                     if item.count > 1 {
-                        let values: Vec<i8> = (0..item.count)
-                            .map(|i| i8::from_be_bytes([data[ps + i]; 1]))
+                        let values: Vec<u8> = (0..item.count)
+                            .map(|i| u8::from_be_bytes([data[ps + i]; 1]))
                             .collect();
                         RType::Int8Array(values)
                     } else {
-                        RType::Int8(i8::from_be_bytes([data[ps]; 1]))
+                        RType::Int8(u8::from_be_bytes([data[ps]; 1]))
                     }
                 }
 
@@ -395,23 +395,23 @@ where
 
                 Type::Int32 => {
                     if item.count > 1 {
-                        let values: Vec<i32> = (0..item.count)
-                            .map(|i| i32::from_bytes(&data, ps + i * 4))
+                        let values: Vec<u32> = (0..item.count)
+                            .map(|i| u32::from_bytes(&data, ps + i * 4))
                             .collect();
                         RType::Int32Array(values)
                     } else {
-                        RType::Int32(i32::from_bytes(&data, ps))
+                        RType::Int32(u32::from_bytes(&data, ps))
                     }
                 }
 
                 Type::Int64 => {
                     if item.count > 1 {
-                        let values: Vec<i64> = (0..item.count)
-                            .map(|i| i64::from_bytes(&data, ps + i * 8))
+                        let values: Vec<u64> = (0..item.count)
+                            .map(|i| u64::from_bytes(&data, ps + i * 8))
                             .collect();
                         RType::Int64Array(values)
                     } else {
-                        RType::Int64(i64::from_bytes(&data, ps))
+                        RType::Int64(u64::from_bytes(&data, ps))
                     }
                 }
 
@@ -467,8 +467,6 @@ macro_rules! from_bytes (
     );
 );
 
-from_bytes!(i16, 2);
-from_bytes!(i32, 4);
-from_bytes!(i64, 8);
 from_bytes!(u16, 2);
 from_bytes!(u32, 4);
+from_bytes!(u64, 8);
