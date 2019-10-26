@@ -55,10 +55,22 @@ impl From<RType> for String {
 impl From<RType> for u64 {
     fn from(t: RType) -> u64 {
         match t {
-            RType::Int8(v) => v.into(),
-            RType::Int16(v) => v.into(),
-            RType::Int32(v) => v.into(),
-            RType::Int64(v) => v.into(),
+            RType::Int8(v) => u64::from(v),
+            RType::Int16(v) => u64::from(v),
+            RType::Int32(v) => u64::from(v),
+            RType::Int64(v) => v,
+            _ => Default::default(),
+        }
+    }
+}
+
+impl From<RType> for Vec<u64> {
+    fn from(t: RType) -> Vec<u64> {
+        match t {
+            RType::Int8Array(v) => v.into_iter().map(|x| x.into()).collect(),
+            RType::Int16Array(v) => v.into_iter().map(|x| x.into()).collect(),
+            RType::Int32Array(v) => v.into_iter().map(|x| x.into()).collect(),
+            RType::Int64Array(v) => v,
             _ => Default::default(),
         }
     }
@@ -92,7 +104,6 @@ from_rtype!(RType::Int16, u16);
 from_rtype!(RType::Int32, u32);
 from_rtype!(RType::Int16Array, Vec<u16>);
 from_rtype!(RType::Int32Array, Vec<u32>);
-from_rtype!(RType::Int64Array, Vec<u64>);
 from_rtype!(RType::StringArray, Vec<String>);
 
 #[derive(Debug)]
