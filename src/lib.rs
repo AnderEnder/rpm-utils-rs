@@ -8,6 +8,7 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::hash::Hash;
 use std::io::{self, Read, Seek};
+use std::mem::size_of;
 use std::path::Path;
 
 use header::{get_tag, Index, RType, SigTag, Tag, Tags, Type};
@@ -375,52 +376,11 @@ where
 
             let tag_value = match item.itype {
                 Type::Null => RType::Null,
-
                 Type::Char => RType::Char(char::from_bytes(&data, ps)),
-
-                Type::Int8 => {
-                    if item.count > 1 {
-                        let values: Vec<u8> = (0..item.count)
-                            .map(|i| u8::from_be_bytes([data[ps + i]; 1]))
-                            .collect();
-                        RType::Int8Array(values)
-                    } else {
-                        RType::Int8(u8::from_be_bytes([data[ps]; 1]))
-                    }
-                }
-
-                Type::Int16 => {
-                    if item.count > 1 {
-                        let values: Vec<u16> = (0..item.count)
-                            .map(|i| u16::from_bytes(&data, ps + i * 2))
-                            .collect();
-                        RType::Int16Array(values)
-                    } else {
-                        RType::Int16(u16::from_bytes(&data, ps))
-                    }
-                }
-
-                Type::Int32 => {
-                    if item.count > 1 {
-                        let values: Vec<u32> = (0..item.count)
-                            .map(|i| u32::from_bytes(&data, ps + i * 4))
-                            .collect();
-                        RType::Int32Array(values)
-                    } else {
-                        RType::Int32(u32::from_bytes(&data, ps))
-                    }
-                }
-
-                Type::Int64 => {
-                    if item.count > 1 {
-                        let values: Vec<u64> = (0..item.count)
-                            .map(|i| u64::from_bytes(&data, ps + i * 8))
-                            .collect();
-                        RType::Int64Array(values)
-                    } else {
-                        RType::Int64(u64::from_bytes(&data, ps))
-                    }
-                }
+                Type::Int8 => extract(data, ps, item.count, RType::Int8, RType::Int8Array),
+                Type::Int16 => extract(data, ps, item.count, RType::Int16, RType::Int16Array),
+                Type::Int32 => extract(data, ps, item.count, RType::Int32, RType::Int32Array),
+                Type::Int64 => extract(data, ps, item.count, RType::Int64, RType::Int64Array),
 
                 Type::String => {
                     let ps2 = indexes[i + 1].offset;
@@ -452,8 +412,31 @@ where
         .collect()
 }
 
+fn extract<T: FromBytes>(
+    data: &[u8],
+    position: usize,
+    count: usize,
+    single: fn(T) -> RType,
+    multiple: fn(Vec<T>) -> RType,
+) -> RType {
+    if count > 1 {
+        let values: Vec<T> = (0..count)
+            .map(|i| T::from_bytes(&data, position + i * size_of::<T>()))
+            .collect();
+        multiple(values)
+    } else {
+        single(T::from_bytes(&data, position))
+    }
+}
+
 trait FromBytes {
     fn from_bytes(data: &[u8], position: usize) -> Self;
+}
+
+impl FromBytes for u8 {
+    fn from_bytes(data: &[u8], position: usize) -> u8 {
+        u8::from_be_bytes([data[position]; 1])
+    }
 }
 
 impl FromBytes for char {
