@@ -11,7 +11,7 @@ use std::io::{self, Read, Seek};
 use std::mem::size_of;
 use std::path::Path;
 
-use header::{get_tag, Index, RType, SigTag, Tag, Tags, Type};
+use header::{Index, RType, SigTag, Tag, Tags, Type};
 
 const MAGIC: [u8; 4] = [237, 171, 238, 219];
 const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
@@ -271,19 +271,19 @@ impl fmt::Display for RPMInfo {
 
 impl From<RPMFile> for RPMInfo {
     fn from(rpm: RPMFile) -> Self {
-        let dirs: Vec<String> = get_tag(&rpm.tags, Tag::DirNames);
-        let dir_indexes: Vec<u32> = get_tag(&rpm.tags, Tag::Dirindexes);
-        let basenames: Vec<String> = get_tag(&rpm.tags, Tag::Basenames);
-        let filesizes: Vec<u64> = get_tag(&rpm.tags, Tag::FileSizes);
-        let users: Vec<String> = get_tag(&rpm.tags, Tag::FileUserName);
-        let groups: Vec<String> = get_tag(&rpm.tags, Tag::FileGroupName);
-        let flags: Vec<u32> = get_tag(&rpm.tags, Tag::FileFlags);
-        let mtimes: Vec<u32> = get_tag(&rpm.tags, Tag::FileMTimes);
-        let linknames: Vec<String> = get_tag(&rpm.tags, Tag::FileGroupName);
-        let modes: Vec<u16> = get_tag(&rpm.tags, Tag::FileModes);
-        let devices: Vec<u32> = get_tag(&rpm.tags, Tag::FileDevices);
-        let inodes: Vec<u32> = get_tag(&rpm.tags, Tag::FileInodes);
-        let digests: Vec<String> = get_tag(&rpm.tags, Tag::FileMD5s);
+        let dirs: Vec<String> = rpm.tags.get(Tag::DirNames);
+        let dir_indexes: Vec<u32> = rpm.tags.get(Tag::Dirindexes);
+        let basenames: Vec<String> = rpm.tags.get(Tag::Basenames);
+        let filesizes: Vec<u64> = rpm.tags.get(Tag::FileSizes);
+        let users: Vec<String> = rpm.tags.get(Tag::FileUserName);
+        let groups: Vec<String> = rpm.tags.get(Tag::FileGroupName);
+        let flags: Vec<u32> = rpm.tags.get(Tag::FileFlags);
+        let mtimes: Vec<u32> = rpm.tags.get(Tag::FileMTimes);
+        let linknames: Vec<String> = rpm.tags.get(Tag::FileGroupName);
+        let modes: Vec<u16> = rpm.tags.get(Tag::FileModes);
+        let devices: Vec<u32> = rpm.tags.get(Tag::FileDevices);
+        let inodes: Vec<u32> = rpm.tags.get(Tag::FileInodes);
+        let digests: Vec<String> = rpm.tags.get(Tag::FileMD5s);
 
         let files: Vec<FileInfo> = multizip((
             basenames,
@@ -313,32 +313,32 @@ impl From<RPMFile> for RPMInfo {
         .collect();
 
         let payload = RPMPayload {
-            size: get_tag(&rpm.sigtags, SigTag::PayloadSize),
-            format: get_tag(&rpm.tags, Tag::Payloadformat),
-            compressor: get_tag(&rpm.tags, Tag::Payloadcompressor),
-            flags: get_tag(&rpm.tags, Tag::Payloadflags),
+            size: rpm.sigtags.get(SigTag::PayloadSize),
+            format: rpm.tags.get(Tag::Payloadformat),
+            compressor: rpm.tags.get(Tag::Payloadcompressor),
+            flags: rpm.tags.get(Tag::Payloadflags),
             files,
         };
 
-        let build_int: u32 = get_tag(&rpm.tags, Tag::BuildTime);
+        let build_int: u32 = rpm.tags.get(Tag::BuildTime);
         let build_time = Local
             .timestamp(i64::from(build_int), 0)
             .format("%c")
             .to_string();
 
         RPMInfo {
-            name: get_tag(&rpm.tags, Tag::Name),
-            version: get_tag(&rpm.tags, Tag::Version),
-            release: get_tag(&rpm.tags, Tag::Release),
-            arch: get_tag(&rpm.tags, Tag::Arch),
-            group: get_tag(&rpm.tags, Tag::Group),
-            size: get_tag(&rpm.tags, Tag::Size),
-            license: get_tag(&rpm.tags, Tag::License),
-            source_rpm: get_tag(&rpm.tags, Tag::SourceRpm),
+            name: rpm.tags.get(Tag::Name),
+            version: rpm.tags.get(Tag::Version),
+            release: rpm.tags.get(Tag::Release),
+            arch: rpm.tags.get(Tag::Arch),
+            group: rpm.tags.get(Tag::Group),
+            size: rpm.tags.get(Tag::Size),
+            license: rpm.tags.get(Tag::License),
+            source_rpm: rpm.tags.get(Tag::SourceRpm),
             build_time,
-            build_host: get_tag(&rpm.tags, Tag::BuildHost),
-            summary: get_tag(&rpm.tags, Tag::Summary),
-            description: get_tag(&rpm.tags, Tag::Description),
+            build_host: rpm.tags.get(Tag::BuildHost),
+            summary: rpm.tags.get(Tag::Summary),
+            description: rpm.tags.get(Tag::Description),
             payload,
         }
     }
@@ -367,9 +367,9 @@ fn parse_strings(bytes: &[u8], count: usize) -> Vec<String> {
 
 fn tags_from_raw<T>(indexes: &[Index<T>], data: &[u8]) -> Tags<T>
 where
-    T: FromPrimitive + Copy + Eq + Hash,
+    T: FromPrimitive + Copy + Eq + Hash + Default,
 {
-    (0..indexes.len())
+    let tags = (0..indexes.len())
         .map(|i| {
             let item = &indexes[i];
             let ps = item.offset;
@@ -409,7 +409,8 @@ where
 
             (item.tag, tag_value)
         })
-        .collect()
+        .collect();
+    Tags(tags)
 }
 
 fn extract<T: FromBytes>(

@@ -10,15 +10,22 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use std::collections::HashMap;
 use std::hash::Hash;
 
-pub type Tags<T> = HashMap<T, RType>;
+#[derive(Debug)]
+pub struct Tags<T>(pub HashMap<T, RType>)
+where
+    T: Eq + Hash;
 
-pub fn get_tag<T, O>(tags: &Tags<T>, name: T) -> O
+impl<T> Tags<T>
 where
     T: FromPrimitive + Default + Eq + Hash,
-    O: Default + From<RType>,
 {
-    match tags.get(&name) {
-        Some(value) => value.clone().into(),
-        _ => O::default(),
+    pub fn get<O>(&self, name: T) -> O
+    where
+        O: Default + From<RType>,
+    {
+        match self.0.get(&name) {
+            Some(value) => value.clone().into(),
+            _ => O::default(),
+        }
     }
 }
