@@ -1,6 +1,7 @@
 pub mod header;
 
 use chrono::{Local, TimeZone};
+use flate2::read::GzDecoder;
 use itertools::multizip;
 use num_traits::FromPrimitive;
 use std::char;
@@ -206,6 +207,13 @@ impl RPMFile {
             tags,
             file,
         })
+    }
+
+    pub fn write_payload(mut self, path: &Path) -> Result<(), io::Error> {
+        let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
+        let mut reader = GzDecoder::new(&mut self.file);
+        io::copy(&mut reader, &mut writer)?;
+        Ok(())
     }
 }
 
