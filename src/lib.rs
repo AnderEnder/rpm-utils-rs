@@ -1,5 +1,6 @@
 pub mod header;
 
+use bzip2::read::BzDecoder;
 use chrono::{Local, TimeZone};
 use flate2::read::GzDecoder;
 use itertools::multizip;
@@ -210,8 +211,19 @@ impl RPMFile {
     }
 
     pub fn write_payload(mut self, path: &Path) -> Result<(), io::Error> {
+        let compressor: String = self.tags.get(Tag::Payloadcompressor);
         let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
-        let mut reader = GzDecoder::new(&mut self.file);
+
+        let mut reader: Box<dyn Read> = match compressor.as_str() {
+            "gzip" => Box::new(GzDecoder::new(&mut self.file)),
+            "bzip2" => Box::new(BzDecoder::new(&mut self.file)),
+            format => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Decompressor \"{}\" is not implemented", format),
+                ))
+            }
+        };
         io::copy(&mut reader, &mut writer)?;
         Ok(())
     }
@@ -277,8 +289,8 @@ impl fmt::Display for RPMInfo {
     }
 }
 
-impl From<RPMFile> for RPMInfo {
-    fn from(rpm: RPMFile) -> Self {
+impl From<&RPMFile> for RPMInfo {
+    fn from(rpm: &RPMFile) -> Self {
         let dirs: Vec<String> = rpm.tags.get(Tag::DirNames);
         let dir_indexes: Vec<u32> = rpm.tags.get(Tag::Dirindexes);
         let basenames: Vec<String> = rpm.tags.get(Tag::Basenames);
