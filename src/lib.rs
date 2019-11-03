@@ -12,6 +12,7 @@ use std::hash::Hash;
 use std::io::{self, Read, Seek};
 use std::mem::size_of;
 use std::path::Path;
+use zstd::stream::read::Decoder;
 
 use header::{Index, RType, SigTag, Tag, Tags, Type};
 
@@ -217,6 +218,7 @@ impl RPMFile {
         let mut reader: Box<dyn Read> = match compressor.as_str() {
             "gzip" => Box::new(GzDecoder::new(&mut self.file)),
             "bzip2" => Box::new(BzDecoder::new(&mut self.file)),
+            "zstd" => Box::new(Decoder::new(&mut self.file)?),
             format => {
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
