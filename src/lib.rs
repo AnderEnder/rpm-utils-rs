@@ -9,6 +9,7 @@ use std::char;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::hash::Hash;
+use std::io::SeekFrom;
 use std::io::{self, Read, Seek};
 use std::mem::size_of;
 use std::path::Path;
@@ -157,12 +158,13 @@ pub struct RPMFile {
     pub header: RawHeader,
     pub h_indexes: Vec<Index<Tag>>,
     pub tags: Tags<Tag>,
+    pub payload_offset: u64,
     pub file: File,
 }
 
 impl RPMFile {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
-        let mut file = OpenOptions::new().read(true).write(true).open(path)?;
+        let mut file = OpenOptions::new().read(true).open(path)?;
         let lead = RawLead::read(&mut file)?;
 
         let signature = RawHeader::read(&mut file)?;
@@ -199,6 +201,8 @@ impl RPMFile {
 
         let tags = tags_from_raw(&h_indexes, &data);
 
+        let payload_offset = file.seek(SeekFrom::Current(0))?;
+
         Ok(Self {
             lead,
             signature,
@@ -208,12 +212,14 @@ impl RPMFile {
             h_indexes,
             tags,
             file,
+            payload_offset,
         })
     }
 
-    pub fn write_payload(mut self, path: &Path) -> Result<(), io::Error> {
+    pub fn copy_payload(mut self, path: &Path) -> Result<u64, io::Error> {
         let compressor: String = self.tags.get(Tag::Payloadcompressor);
         let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
+        self.file.seek(SeekFrom::Start(self.payload_offset))?;
 
         let mut reader: Box<dyn Read> = match compressor.as_str() {
             "gzip" => Box::new(GzDecoder::new(&mut self.file)),
@@ -226,8 +232,7 @@ impl RPMFile {
                 ))
             }
         };
-        io::copy(&mut reader, &mut writer)?;
-        Ok(())
+        io::copy(&mut reader, &mut writer)
     }
 }
 
