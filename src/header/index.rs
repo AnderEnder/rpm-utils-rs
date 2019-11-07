@@ -152,3 +152,22 @@ where
         })
     }
 }
+
+pub struct IndexArray;
+
+impl IndexArray {
+    pub fn read<R, T>(fh: &mut R, nindex: usize) -> Result<Vec<Index<T>>, io::Error>
+    where
+        R: Read + Seek,
+        T: FromPrimitive + Default,
+    {
+        let mut indexes = Vec::with_capacity(nindex);
+        for _ in 0..nindex {
+            let index = Index::read(fh)?;
+            indexes.push(index);
+        }
+
+        indexes.sort_by_key(|k| k.offset);
+        Ok(indexes)
+    }
+}

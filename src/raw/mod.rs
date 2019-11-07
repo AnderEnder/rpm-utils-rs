@@ -1,8 +1,8 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
+use std::fmt;
 use std::io::{self, Read, Seek};
 use strum_macros::Display;
-use std::fmt;
 
 pub const MAGIC: [u8; 4] = [237, 171, 238, 219];
 pub const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
@@ -168,9 +168,9 @@ impl Default for RawHeader {
     fn default() -> Self {
         RawHeader {
             magic: MAGIC_HEADER,
-      		reserved: [0; 4],
-      		nindex: 0,
-      		hsize: 0,
+            reserved: [0; 4],
+            nindex: 0,
+            hsize: 0,
         }
     }
 }

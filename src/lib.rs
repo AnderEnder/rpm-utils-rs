@@ -16,12 +16,11 @@ use std::mem::size_of;
 use std::path::Path;
 use zstd::stream::read::Decoder;
 
-use header::{Index, RType, SigTag, Tag, Tags, Type};
+use header::{Index, IndexArray, RType, SigTag, Tag, Tags, Type};
 use raw::*;
 
 #[derive(Debug)]
 pub struct RPMFile {
-// pub struct RPMFile<T: Read + Seek> {
     pub lead: RawLead,
     pub signature: RawHeader,
     pub indexes: Vec<Index<SigTag>>,
@@ -30,26 +29,16 @@ pub struct RPMFile {
     pub h_indexes: Vec<Index<Tag>>,
     pub tags: Tags<Tag>,
     pub payload_offset: u64,
-//    pub file: T,
     pub file: File,
-
 }
 
 impl RPMFile {
-// impl<T: Read + Seek> RPMFile<T> {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<RPMFile, io::Error> {
         let mut file = OpenOptions::new().read(true).open(path)?;
+
         let lead = RawLead::read(&mut file)?;
-
         let signature = RawHeader::read(&mut file)?;
-
-        let mut indexes = Vec::with_capacity(signature.nindex);
-        for _ in 0..signature.nindex {
-            let index = Index::read(&mut file)?;
-            indexes.push(index);
-        }
-
-        indexes.sort_by_key(|k| k.offset);
+        let indexes = IndexArray::read(&mut file, signature.nindex)?;
 
         let mut s_data = vec![0_u8; signature.hsize as usize];
         file.read_exact(&mut s_data)?;
@@ -61,14 +50,7 @@ impl RPMFile {
         file.seek(io::SeekFrom::Current(pos.into()))?;
 
         let header = RawHeader::read(&mut file)?;
-
-        let mut h_indexes = Vec::with_capacity(signature.nindex);
-        for _ in 0..header.nindex {
-            let index = Index::read(&mut file)?;
-            h_indexes.push(index);
-        }
-
-        h_indexes.sort_by_key(|k| k.offset);
+        let h_indexes = IndexArray::read(&mut file, header.nindex)?;
 
         let mut data = vec![0_u8; header.hsize as usize];
         file.read_exact(&mut data)?;
@@ -109,24 +91,6 @@ impl RPMFile {
         io::copy(&mut reader, &mut writer)
     }
 }
-
-/*
-impl Default for RPMFile<Empty> {
-    fn default() -> RPMFile<Empty> {
-        RPMFile {
-            lead: Default::default(),
-            signature: Default::default(),
-            indexes: Default::default(),
-            sigtags: Default::default(),
-            header: Default::default(),
-            h_indexes: Default::default(),
-            tags: Default::default(),
-            file: Empty,
-            payload_offset: Default::default(),
-        }
-    }
-}
-*/
 
 #[derive(Debug)]
 pub struct FileInfo {
@@ -189,8 +153,6 @@ impl fmt::Display for RPMInfo {
 }
 
 impl From<&RPMFile> for RPMInfo {
-// impl<T: Read + Seek> From<&RPMFile<T>> for RPMInfo {
-//    fn from(rpm: &RPMFile<T>) -> Self {
     fn from(rpm: &RPMFile) -> Self {
         let dirs: Vec<String> = rpm.tags.get(Tag::DirNames);
         let dir_indexes: Vec<u32> = rpm.tags.get(Tag::Dirindexes);
@@ -264,13 +226,6 @@ impl From<&RPMFile> for RPMInfo {
         }
     }
 }
-/*
-impl From<RPMInfo> for RPMFile<Empty> {
-    fn from(info: RPMInfo) -> Self {
-        RPMFile::default()
-    }
-}
-*/
 
 fn debug_some<R: Read + Seek>(file: &mut R) -> Result<(), io::Error> {
     let mut debug = [0_u8; 32];
