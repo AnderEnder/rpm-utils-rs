@@ -1,5 +1,5 @@
 use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 use std::io;
 use std::io::{Read, Seek};
 use strum_macros::Display;
