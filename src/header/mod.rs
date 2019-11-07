@@ -6,12 +6,11 @@ pub use index::*;
 pub use sigtags::*;
 pub use tags::*;
 
-use num_traits::{FromPrimitive};
+use num_traits::FromPrimitive;
+use std::char;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::char;
-use std::io;
-use std::io::{Read, Seek};
+use std::io::{self, Read, Seek};
 use std::mem::size_of;
 
 #[derive(Debug, Default)]
@@ -34,7 +33,7 @@ where
     }
     pub fn read<R>(fh: &mut R, indexes: &[Index<T>], size: usize) -> Result<Self, io::Error>
     where
-        R: Read + Seek
+        R: Read + Seek,
     {
         let mut s_data = vec![0_u8; size];
         fh.read_exact(&mut s_data)?;
@@ -43,8 +42,7 @@ where
         Ok(tags)
     }
 
-    pub fn tags_from_raw(indexes: &[Index<T>], data: &[u8]) -> Self
-    {
+    pub fn tags_from_raw(indexes: &[Index<T>], data: &[u8]) -> Self {
         let tags = (0..indexes.len())
             .map(|i| {
                 let item = &indexes[i];

@@ -1,4 +1,3 @@
-
 use std::io::{self, Read, Seek};
 
 pub const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];

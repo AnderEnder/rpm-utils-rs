@@ -1,6 +1,6 @@
 pub mod header;
-pub mod raw;
 pub mod payload;
+pub mod raw;
 
 use bzip2::read::BzDecoder;
 use chrono::{Local, TimeZone};
@@ -8,14 +8,13 @@ use flate2::read::GzDecoder;
 use itertools::multizip;
 use std::fmt;
 use std::fs::{File, OpenOptions};
-use std::io::SeekFrom;
-use std::io::{self, Read, Seek};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 use zstd::stream::read::Decoder;
 
 use header::{IndexArray, SigTag, Tag, Tags};
-use raw::*;
 use payload::*;
+use raw::*;
 
 #[derive(Debug)]
 pub struct RPMFile {
