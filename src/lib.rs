@@ -1,5 +1,6 @@
 pub mod header;
 pub mod raw;
+pub mod payload;
 
 use bzip2::read::BzDecoder;
 use chrono::{Local, TimeZone};
@@ -14,6 +15,7 @@ use zstd::stream::read::Decoder;
 
 use header::{IndexArray, SigTag, Tag, Tags};
 use raw::*;
+use payload::*;
 
 #[derive(Debug)]
 pub struct RPMFile {
@@ -28,7 +30,7 @@ impl RPMFile {
         let mut file = OpenOptions::new().read(true).open(path)?;
 
         let _lead = RawLead::read(&mut file)?;
-        
+
         let signature = RawHeader::read(&mut file)?;
         let indexes = IndexArray::read(&mut file, signature.nindex)?;
         let sigtags = Tags::read(&mut file, &indexes, signature.hsize as usize)?;
@@ -69,30 +71,6 @@ impl RPMFile {
         };
         io::copy(&mut reader, &mut writer)
     }
-}
-
-#[derive(Debug)]
-pub struct FileInfo {
-    pub name: String,
-    pub size: u64,
-    pub user: String,
-    pub group: String,
-    pub flags: u32,
-    pub mtime: u32,
-    pub digest: String,
-    pub mode: u16,
-    pub linkname: String,
-    pub device: u32,
-    pub inode: u32,
-}
-
-#[derive(Debug)]
-pub struct RPMPayload {
-    pub size: u64,
-    pub format: String,
-    pub compressor: String,
-    pub flags: String,
-    pub files: Vec<FileInfo>,
 }
 
 #[derive(Debug)]
