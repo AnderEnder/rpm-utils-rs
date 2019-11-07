@@ -10,7 +10,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use std::collections::HashMap;
 use std::hash::Hash;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Tags<T>(pub HashMap<T, RType>)
 where
     T: Eq + Hash;
