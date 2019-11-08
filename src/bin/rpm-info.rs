@@ -21,8 +21,8 @@ fn run(args: Args) -> Result<(), io::Error> {
     let info: RPMInfo = (&file).into();
 
     if args.debug {
-        println!("{:#?}", file.sigtags);
-        println!("{:#?}", file.tags);
+        println!("{:#?}", file.signature_tags);
+        println!("{:#?}", file.header_tags);
         println!("{:#?}", info);
     } else {
         println!("{}", info);

@@ -2,7 +2,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use strum_macros::Display;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Display, PartialEq, Eq, Hash)]
-pub enum SigTag {
+pub enum SignatureTag {
     HeaderImage = 61,
     HeaderSignatures = 62,
     HeaderImmutable = 63,
@@ -36,8 +36,8 @@ pub enum SigTag {
     Other,
 }
 
-impl Default for SigTag {
-    fn default() -> SigTag {
-        SigTag::Other
+impl Default for SignatureTag {
+    fn default() -> SignatureTag {
+        SignatureTag::Other
     }
 }

@@ -12,7 +12,7 @@ pub enum Type {
     Source = 1,
 }
 
-pub struct RawLead {
+pub struct Lead {
     pub magic: [u8; 4],
     pub major: u8,
     pub minor: u8,
@@ -24,7 +24,7 @@ pub struct RawLead {
     pub reserved: [u8; 16],
 }
 
-impl RawLead {
+impl Lead {
     pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
         fh.seek(io::SeekFrom::Start(0))?;
         let mut magic = [0_u8; 4];
@@ -41,9 +41,24 @@ impl RawLead {
         fh.read_exact(&mut head)?;
         let [major, minor] = head;
 
+        match (major, minor) {
+            (3, 0) | (3, 1) | (4, 0) => {}
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!(
+                        "Error: rpm format version is not supported {}.{}",
+                        major, minor
+                    ),
+                ))
+            }
+        }
+
         let mut rpm_type_be = [0_u8; 2];
         fh.read_exact(&mut rpm_type_be)?;
-        let rpm_type = Type::from_u16(u16::from_be_bytes(rpm_type_be)).unwrap();
+        let rpm_type = Type::from_u16(u16::from_be_bytes(rpm_type_be)).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::Other, "Error: can not read the rpm type")
+        })?;
         let mut archnum_be = [0_u8; 2];
         fh.read_exact(&mut archnum_be)?;
         let archnum = u16::from_be_bytes(archnum_be);
@@ -59,7 +74,7 @@ impl RawLead {
         let mut reserved = [0_u8; 16];
         fh.read_exact(&mut reserved)?;
 
-        Ok(Self {
+        Ok(Lead {
             magic,
             major,
             minor,
@@ -73,7 +88,7 @@ impl RawLead {
     }
 }
 
-impl fmt::Display for RawLead {
+impl fmt::Display for Lead {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "magic: {:?}", self.magic)?;
         writeln!(f, "major: {}", self.major)?;
@@ -87,7 +102,7 @@ impl fmt::Display for RawLead {
     }
 }
 
-impl fmt::Debug for RawLead {
+impl fmt::Debug for Lead {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "magic: {:?}", self.magic)?;
         writeln!(f, "major: {}", self.major)?;
@@ -101,9 +116,9 @@ impl fmt::Debug for RawLead {
     }
 }
 
-impl Default for RawLead {
+impl Default for Lead {
     fn default() -> Self {
-        RawLead {
+        Lead {
             magic: MAGIC,
             major: 0,
             minor: 0,

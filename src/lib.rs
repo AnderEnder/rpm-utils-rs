@@ -12,14 +12,14 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 use zstd::stream::read::Decoder;
 
-use header::{IndexArray, HeaderLead, SigTag, Tag, Tags};
+use header::{HeaderLead, IndexArray, SignatureTag, Tag, Tags};
 use payload::{FileInfo, RPMPayload};
-use raw::RawLead;
+use raw::Lead;
 
 #[derive(Debug)]
 pub struct RPMFile {
-    pub sigtags: Tags<SigTag>,
-    pub tags: Tags<Tag>,
+    pub signature_tags: Tags<SignatureTag>,
+    pub header_tags: Tags<Tag>,
     pub payload_offset: u64,
     pub file: File,
 }
@@ -28,32 +28,33 @@ impl RPMFile {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<RPMFile, io::Error> {
         let mut file = OpenOptions::new().read(true).open(path)?;
 
-        let _lead = RawLead::read(&mut file)?;
+        let _lead = Lead::read(&mut file)?;
 
-        let signature = HeaderLead::read(&mut file)?;
-        let indexes = IndexArray::read(&mut file, signature.nindex)?;
-        let sigtags = Tags::read(&mut file, &indexes, signature.hsize as usize)?;
+        let signature_lead = HeaderLead::read(&mut file)?;
+        let signature_indexes = IndexArray::read(&mut file, signature_lead.nindex)?;
+        let signature_tags =
+            Tags::read(&mut file, &signature_indexes, signature_lead.hsize as usize)?;
 
         // aligning to 8 bytes
-        let pos = signature.hsize - 8 * (signature.hsize / 8);
+        let pos = signature_lead.hsize - 8 * (signature_lead.hsize / 8);
         file.seek(io::SeekFrom::Current(pos.into()))?;
 
         let header = HeaderLead::read(&mut file)?;
-        let h_indexes = IndexArray::read(&mut file, header.nindex)?;
-        let tags = Tags::read(&mut file, &h_indexes, header.hsize as usize)?;
+        let header_indexes = IndexArray::read(&mut file, header.nindex)?;
+        let header_tags = Tags::read(&mut file, &header_indexes, header.hsize as usize)?;
 
         let payload_offset = file.seek(SeekFrom::Current(0))?;
 
         Ok(RPMFile {
-            sigtags,
-            tags,
+            signature_tags,
+            header_tags,
             file,
             payload_offset,
         })
     }
 
     pub fn copy_payload(mut self, path: &Path) -> Result<u64, io::Error> {
-        let compressor: String = self.tags.get(Tag::Payloadcompressor);
+        let compressor: String = self.header_tags.get(Tag::Payloadcompressor);
         let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
         self.file.seek(SeekFrom::Start(self.payload_offset))?;
 
@@ -110,19 +111,19 @@ impl fmt::Display for RPMInfo {
 
 impl From<&RPMFile> for RPMInfo {
     fn from(rpm: &RPMFile) -> Self {
-        let dirs: Vec<String> = rpm.tags.get(Tag::DirNames);
-        let dir_indexes: Vec<u32> = rpm.tags.get(Tag::Dirindexes);
-        let basenames: Vec<String> = rpm.tags.get(Tag::Basenames);
-        let filesizes: Vec<u64> = rpm.tags.get(Tag::FileSizes);
-        let users: Vec<String> = rpm.tags.get(Tag::FileUserName);
-        let groups: Vec<String> = rpm.tags.get(Tag::FileGroupName);
-        let flags: Vec<u32> = rpm.tags.get(Tag::FileFlags);
-        let mtimes: Vec<u32> = rpm.tags.get(Tag::FileMTimes);
-        let linknames: Vec<String> = rpm.tags.get(Tag::FileGroupName);
-        let modes: Vec<u16> = rpm.tags.get(Tag::FileModes);
-        let devices: Vec<u32> = rpm.tags.get(Tag::FileDevices);
-        let inodes: Vec<u32> = rpm.tags.get(Tag::FileInodes);
-        let digests: Vec<String> = rpm.tags.get(Tag::FileMD5s);
+        let dirs: Vec<String> = rpm.header_tags.get(Tag::DirNames);
+        let dir_indexes: Vec<u32> = rpm.header_tags.get(Tag::Dirindexes);
+        let basenames: Vec<String> = rpm.header_tags.get(Tag::Basenames);
+        let filesizes: Vec<u64> = rpm.header_tags.get(Tag::FileSizes);
+        let users: Vec<String> = rpm.header_tags.get(Tag::FileUserName);
+        let groups: Vec<String> = rpm.header_tags.get(Tag::FileGroupName);
+        let flags: Vec<u32> = rpm.header_tags.get(Tag::FileFlags);
+        let mtimes: Vec<u32> = rpm.header_tags.get(Tag::FileMTimes);
+        let linknames: Vec<String> = rpm.header_tags.get(Tag::FileGroupName);
+        let modes: Vec<u16> = rpm.header_tags.get(Tag::FileModes);
+        let devices: Vec<u32> = rpm.header_tags.get(Tag::FileDevices);
+        let inodes: Vec<u32> = rpm.header_tags.get(Tag::FileInodes);
+        let digests: Vec<String> = rpm.header_tags.get(Tag::FileMD5s);
 
         let files: Vec<FileInfo> = multizip((
             basenames,
@@ -152,40 +153,33 @@ impl From<&RPMFile> for RPMInfo {
         .collect();
 
         let payload = RPMPayload {
-            size: rpm.sigtags.get(SigTag::PayloadSize),
-            format: rpm.tags.get(Tag::Payloadformat),
-            compressor: rpm.tags.get(Tag::Payloadcompressor),
-            flags: rpm.tags.get(Tag::Payloadflags),
+            size: rpm.signature_tags.get(SignatureTag::PayloadSize),
+            format: rpm.header_tags.get(Tag::Payloadformat),
+            compressor: rpm.header_tags.get(Tag::Payloadcompressor),
+            flags: rpm.header_tags.get(Tag::Payloadflags),
             files,
         };
 
-        let build_int: u32 = rpm.tags.get(Tag::BuildTime);
+        let build_int: u32 = rpm.header_tags.get(Tag::BuildTime);
         let build_time = Local
             .timestamp(i64::from(build_int), 0)
             .format("%c")
             .to_string();
 
         RPMInfo {
-            name: rpm.tags.get(Tag::Name),
-            version: rpm.tags.get(Tag::Version),
-            release: rpm.tags.get(Tag::Release),
-            arch: rpm.tags.get(Tag::Arch),
-            group: rpm.tags.get(Tag::Group),
-            size: rpm.tags.get(Tag::Size),
-            license: rpm.tags.get(Tag::License),
-            source_rpm: rpm.tags.get(Tag::SourceRpm),
+            name: rpm.header_tags.get(Tag::Name),
+            version: rpm.header_tags.get(Tag::Version),
+            release: rpm.header_tags.get(Tag::Release),
+            arch: rpm.header_tags.get(Tag::Arch),
+            group: rpm.header_tags.get(Tag::Group),
+            size: rpm.header_tags.get(Tag::Size),
+            license: rpm.header_tags.get(Tag::License),
+            source_rpm: rpm.header_tags.get(Tag::SourceRpm),
             build_time,
-            build_host: rpm.tags.get(Tag::BuildHost),
-            summary: rpm.tags.get(Tag::Summary),
-            description: rpm.tags.get(Tag::Description),
+            build_host: rpm.header_tags.get(Tag::BuildHost),
+            summary: rpm.header_tags.get(Tag::Summary),
+            description: rpm.header_tags.get(Tag::Description),
             payload,
         }
     }
-}
-
-fn debug_some<R: Read + Seek>(file: &mut R) -> Result<(), io::Error> {
-    let mut debug = [0_u8; 32];
-    file.read_exact(&mut debug)?;
-    println!("Bytes: {:?}", debug);
-    Ok(())
 }
