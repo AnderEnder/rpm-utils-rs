@@ -12,9 +12,9 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 use zstd::stream::read::Decoder;
 
-use header::{IndexArray, SigTag, Tag, Tags};
-use payload::*;
-use raw::*;
+use header::{IndexArray, HeaderLead, SigTag, Tag, Tags};
+use payload::{FileInfo, RPMPayload};
+use raw::RawLead;
 
 #[derive(Debug)]
 pub struct RPMFile {
@@ -30,7 +30,7 @@ impl RPMFile {
 
         let _lead = RawLead::read(&mut file)?;
 
-        let signature = RawHeader::read(&mut file)?;
+        let signature = HeaderLead::read(&mut file)?;
         let indexes = IndexArray::read(&mut file, signature.nindex)?;
         let sigtags = Tags::read(&mut file, &indexes, signature.hsize as usize)?;
 
@@ -38,7 +38,7 @@ impl RPMFile {
         let pos = signature.hsize - 8 * (signature.hsize / 8);
         file.seek(io::SeekFrom::Current(pos.into()))?;
 
-        let header = RawHeader::read(&mut file)?;
+        let header = HeaderLead::read(&mut file)?;
         let h_indexes = IndexArray::read(&mut file, header.nindex)?;
         let tags = Tags::read(&mut file, &h_indexes, header.hsize as usize)?;
 

@@ -3,14 +3,14 @@ use std::io::{self, Read, Seek};
 pub const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
 
 #[derive(Debug)]
-pub struct RawHeader {
+pub struct HeaderLead {
     pub magic: [u8; 4],
     pub reserved: [u8; 4],
     pub nindex: usize,
     pub hsize: u32,
 }
 
-impl RawHeader {
+impl HeaderLead {
     pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
         let mut magic = [0_u8; 4];
         fh.read_exact(&mut magic)?;
@@ -33,7 +33,7 @@ impl RawHeader {
         fh.read_exact(&mut hsize_be)?;
         let hsize = u32::from_be_bytes(hsize_be);
 
-        Ok(RawHeader {
+        Ok(HeaderLead {
             magic,
             reserved,
             nindex: nindex as usize,
@@ -42,9 +42,9 @@ impl RawHeader {
     }
 }
 
-impl Default for RawHeader {
+impl Default for HeaderLead {
     fn default() -> Self {
-        RawHeader {
+        HeaderLead {
             magic: MAGIC_HEADER,
             reserved: [0; 4],
             nindex: 0,
