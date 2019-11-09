@@ -54,7 +54,7 @@ impl RPMFile {
     }
 
     pub fn copy_payload(mut self, path: &Path) -> Result<u64, io::Error> {
-        let compressor: String = self.header_tags.get(Tag::Payloadcompressor);
+        let compressor: String = self.header_tags.get(Tag::PayloadCompressor);
         let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
         self.file.seek(SeekFrom::Start(self.payload_offset))?;
 
@@ -112,8 +112,8 @@ impl fmt::Display for RPMInfo {
 impl From<&RPMFile> for RPMInfo {
     fn from(rpm: &RPMFile) -> Self {
         let dirs: Vec<String> = rpm.header_tags.get(Tag::DirNames);
-        let dir_indexes: Vec<u32> = rpm.header_tags.get(Tag::Dirindexes);
-        let basenames: Vec<String> = rpm.header_tags.get(Tag::Basenames);
+        let dir_indexes: Vec<u32> = rpm.header_tags.get(Tag::DirIndexes);
+        let basenames: Vec<String> = rpm.header_tags.get(Tag::BaseNames);
         let filesizes: Vec<u64> = rpm.header_tags.get(Tag::FileSizes);
         let users: Vec<String> = rpm.header_tags.get(Tag::FileUserName);
         let groups: Vec<String> = rpm.header_tags.get(Tag::FileGroupName);
@@ -154,9 +154,9 @@ impl From<&RPMFile> for RPMInfo {
 
         let payload = RPMPayload {
             size: rpm.signature_tags.get(SignatureTag::PayloadSize),
-            format: rpm.header_tags.get(Tag::Payloadformat),
-            compressor: rpm.header_tags.get(Tag::Payloadcompressor),
-            flags: rpm.header_tags.get(Tag::Payloadflags),
+            format: rpm.header_tags.get(Tag::PayloadFormat),
+            compressor: rpm.header_tags.get(Tag::PayloadCompressor),
+            flags: rpm.header_tags.get(Tag::PayloadFlags),
             files,
         };
 
