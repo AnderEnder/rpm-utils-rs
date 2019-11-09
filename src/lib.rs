@@ -1,6 +1,6 @@
 pub mod header;
 pub mod payload;
-pub mod raw;
+pub mod lead;
 
 use bzip2::read::BzDecoder;
 use chrono::{Local, TimeZone};
@@ -14,7 +14,7 @@ use zstd::stream::read::Decoder;
 
 use header::{HeaderLead, IndexArray, SignatureTag, Tag, Tags};
 use payload::{FileInfo, RPMPayload};
-use raw::Lead;
+use lead::Lead;
 
 #[derive(Debug)]
 pub struct RPMFile {
