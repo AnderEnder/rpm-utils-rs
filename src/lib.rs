@@ -10,6 +10,7 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
+use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder;
 
 use header::{HeaderLead, IndexArray, SignatureTag, Tag, Tags};
@@ -62,6 +63,7 @@ impl RPMFile {
             "gzip" => Box::new(GzDecoder::new(&mut self.file)),
             "bzip2" => Box::new(BzDecoder::new(&mut self.file)),
             "zstd" => Box::new(Decoder::new(&mut self.file)?),
+            "xz" | "lzma" => Box::new(XzDecoder::new(&mut self.file)),
             format => {
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
