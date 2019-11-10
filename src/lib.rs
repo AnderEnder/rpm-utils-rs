@@ -1,6 +1,6 @@
 pub mod header;
-pub mod payload;
 pub mod lead;
+pub mod payload;
 
 use bzip2::read::BzDecoder;
 use chrono::{Local, TimeZone};
@@ -14,8 +14,8 @@ use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder;
 
 use header::{HeaderLead, IndexArray, SignatureTag, Tag, Tags};
-use payload::{FileInfo, RPMPayload};
 use lead::Lead;
+use payload::{FileInfo, RPMPayload};
 
 #[derive(Debug)]
 pub struct RPMFile {
@@ -54,24 +54,25 @@ impl RPMFile {
         })
     }
 
-    pub fn copy_payload(mut self, path: &Path) -> Result<u64, io::Error> {
+    pub fn copy_payload(self, path: &Path) -> Result<u64, io::Error> {
         let compressor: String = self.header_tags.get(Tag::PayloadCompressor);
         let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
-        self.file.seek(SeekFrom::Start(self.payload_offset))?;
-
-        let mut reader: Box<dyn Read> = match compressor.as_str() {
-            "gzip" => Box::new(GzDecoder::new(&mut self.file)),
-            "bzip2" => Box::new(BzDecoder::new(&mut self.file)),
-            "zstd" => Box::new(Decoder::new(&mut self.file)?),
-            "xz" | "lzma" => Box::new(XzDecoder::new(&mut self.file)),
-            format => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Decompressor \"{}\" is not implemented", format),
-                ))
-            }
-        };
+        let mut reader = self.into_uncompress_reader(&compressor)?;
         io::copy(&mut reader, &mut writer)
+    }
+
+    fn into_uncompress_reader(mut self, compressor: &str) -> Result<Box<dyn Read>, io::Error> {
+        self.file.seek(SeekFrom::Start(self.payload_offset))?;
+        match compressor {
+            "gzip" => Ok(Box::new(GzDecoder::new(self.file))),
+            "bzip2" => Ok(Box::new(BzDecoder::new(self.file))),
+            "zstd" => Ok(Box::new(Decoder::new(self.file)?)),
+            "xz" | "lzma" => Ok(Box::new(XzDecoder::new(self.file))),
+            format => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Decompressor \"{}\" is not implemented", format),
+            )),
+        }
     }
 }
 
