@@ -18,15 +18,15 @@ use lead::Lead;
 use payload::{FileInfo, RPMPayload};
 
 #[derive(Debug)]
-pub struct RPMFile {
+pub struct RPMFile<T> {
     pub signature_tags: Tags<SignatureTag>,
     pub header_tags: Tags<Tag>,
     pub payload_offset: u64,
-    pub file: File,
+    pub file: T,
 }
 
-impl RPMFile {
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<RPMFile, io::Error> {
+impl RPMFile<File> {
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
         let mut file = OpenOptions::new().read(true).open(path)?;
 
         let _lead = Lead::read(&mut file)?;
@@ -53,7 +53,9 @@ impl RPMFile {
             payload_offset,
         })
     }
+}
 
+impl<T: 'static + Read + Seek> RPMFile<T> {
     pub fn copy_payload(self, path: &Path) -> Result<u64, io::Error> {
         let compressor: String = self.header_tags.get(Tag::PayloadCompressor);
         let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
@@ -112,8 +114,8 @@ impl fmt::Display for RPMInfo {
     }
 }
 
-impl From<&RPMFile> for RPMInfo {
-    fn from(rpm: &RPMFile) -> Self {
+impl<T: Read> From<&RPMFile<T>> for RPMInfo {
+    fn from(rpm: &RPMFile<T>) -> Self {
         let dirs: Vec<String> = rpm.header_tags.get(Tag::DirNames);
         let dir_indexes: Vec<u32> = rpm.header_tags.get(Tag::DirIndexes);
         let basenames: Vec<String> = rpm.header_tags.get(Tag::BaseNames);
