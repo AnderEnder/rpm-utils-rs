@@ -37,7 +37,8 @@ impl RPMFile<File> {
             Tags::read(&mut file, &signature_indexes, signature_lead.hsize as usize)?;
 
         // aligning to 8 bytes
-        let pos = signature_lead.hsize - 8 * (signature_lead.hsize / 8);
+        let pos = align_8_bytes(signature_lead.hsize);
+
         file.seek(io::SeekFrom::Current(pos.into()))?;
 
         let header = HeaderLead::read(&mut file)?;
@@ -76,6 +77,10 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
             )),
         }
     }
+}
+
+fn align_8_bytes(from: u32) -> u32 {
+    (8 - from % 8) % 8
 }
 
 #[derive(Debug)]
@@ -186,5 +191,18 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
             description: rpm.header_tags.get(Tag::Description),
             payload,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_allign() {
+        assert_eq!(align_8_bytes(32), 0);
+        assert_eq!(align_8_bytes(33), 7);
+        assert_eq!(align_8_bytes(34), 6);
+        assert_eq!(align_8_bytes(35), 5);
+        assert_eq!(align_8_bytes(39), 1);
     }
 }

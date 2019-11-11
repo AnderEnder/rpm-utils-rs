@@ -1,31 +1,27 @@
-use rpm_utils::{RPMFile, RPMInfo};
+use rpm_utils::payload;
+use std::fs::File;
 use std::io;
 use std::path::PathBuf;
 use std::process::exit;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "rpm-info")]
+#[structopt(name = "cpio-extract")]
 struct Args {
     /// Path to data file
     #[structopt(name = "path", parse(from_os_str))]
     path: PathBuf,
 
-    /// Show internal debug information
+    /// Outputs results in JSON form
     #[structopt(long = "debug", short = "d")]
     debug: bool,
 }
 
 fn run(args: Args) -> Result<(), io::Error> {
-    let file = RPMFile::open(args.path)?;
-    let info: RPMInfo = (&file).into();
-
-    if args.debug {
-        println!("{:#?}", file.signature_tags);
-        println!("{:#?}", file.header_tags);
-        println!("{:#?}", info);
-    } else {
-        println!("{}", info);
+    let mut file = File::open(args.path)?;
+    let entries = payload::cpio_read_entries(&mut file)?;
+    for entry in &entries {
+        println!("{:#?}", entry);
     }
     Ok(())
 }

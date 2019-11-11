@@ -13,6 +13,10 @@ pub struct FileInfo {
     pub inode: u32,
 }
 
+mod cpio;
+
+pub use cpio::*;
+
 #[derive(Debug)]
 pub struct RPMPayload {
     pub size: u64,
