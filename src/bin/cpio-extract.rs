@@ -19,7 +19,7 @@ struct Args {
 
 fn run(args: Args) -> Result<(), io::Error> {
     let mut file = File::open(args.path)?;
-    let entries = payload::cpio_read_entries(&mut file)?;
+    let entries = payload::read_entries(&mut file)?;
     for entry in &entries {
         println!("{:#?}", entry);
     }

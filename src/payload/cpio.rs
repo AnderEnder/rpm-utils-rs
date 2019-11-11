@@ -51,7 +51,13 @@ impl FileEntry {
         // optimise later
         let mut name_bytes = vec![0_u8; name_size as usize];
         fh.read_exact(&mut name_bytes)?;
-        let name = parse_string(&name_bytes);
+        let name =
+            String::from_utf8(name_bytes[0..(name_size - 1) as usize].to_vec()).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Error: incorrect utf8 symbol: {}", e),
+                )
+            })?;
 
         // aligning to 4 bytes: name +
         let pos = align_bytes(name_size + 6, 4);
@@ -78,24 +84,22 @@ fn align_bytes(from: u32, n: u32) -> u32 {
     (n - from % n) % n
 }
 
-fn parse_string(bytes: &[u8]) -> String {
-    let position = bytes.iter().position(|&x| x == 0).unwrap_or(0);
-    let bytes2 = &bytes[0..position];
-    String::from_utf8_lossy(bytes2).to_string()
-}
-
 fn u32_from_hex<R: Read + Seek>(fh: &mut R) -> Result<u32, io::Error> {
     let mut raw_bytes = [0_u8; 8];
     fh.read_exact(&mut raw_bytes)?;
 
-    let v =
-        Vec::from_hex(raw_bytes).map_err(|_| io::Error::new(io::ErrorKind::Other, "Error: "))?;
+    let v = Vec::from_hex(raw_bytes).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            format!("Error: can not parse hex {}", e),
+        )
+    })?;
 
     let bytes = [v[0], v[1], v[2], v[3]];
     Ok(u32::from_be_bytes(bytes))
 }
 
-pub fn cpio_read_entries<R: Read + Seek>(fh: &mut R) -> Result<Vec<FileEntry>, io::Error> {
+pub fn read_entries<R: Read + Seek>(fh: &mut R) -> Result<Vec<FileEntry>, io::Error> {
     let mut entries = Vec::new();
 
     loop {
@@ -110,7 +114,7 @@ pub fn cpio_read_entries<R: Read + Seek>(fh: &mut R) -> Result<Vec<FileEntry>, i
     Ok(entries)
 }
 
-pub fn cpio_read_entry<R: Read + Seek, W: Write>(
+pub fn read_entry<R: Read + Seek, W: Write>(
     fh: &mut R,
     wfh: &mut W,
 ) -> Result<(FileEntry, u64), io::Error> {
@@ -121,7 +125,7 @@ pub fn cpio_read_entry<R: Read + Seek, W: Write>(
     Ok((entry, number))
 }
 
-pub fn cpio_extract_entry<R: Read + Seek, W: Write>(
+pub fn extract_entry<R: Read + Seek, W: Write>(
     reader: &mut R,
     dir: &PathBuf,
 ) -> Result<u64, io::Error> {
