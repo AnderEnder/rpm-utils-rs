@@ -1,3 +1,7 @@
+mod cpio;
+
+pub use cpio::*;
+
 #[derive(Debug)]
 pub struct FileInfo {
     pub name: String,
@@ -12,10 +16,6 @@ pub struct FileInfo {
     pub device: u32,
     pub inode: u32,
 }
-
-mod cpio;
-
-pub use cpio::*;
 
 #[derive(Debug)]
 pub struct RPMPayload {

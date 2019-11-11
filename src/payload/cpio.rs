@@ -22,9 +22,9 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
-    pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
+    pub fn read<R: Read + Seek>(reader: &mut R) -> Result<Self, io::Error> {
         let mut magic = [0_u8; 6];
-        fh.read_exact(&mut magic)?;
+        reader.read_exact(&mut magic)?;
 
         if magic != MAGIC {
             return Err(io::Error::new(
@@ -33,24 +33,24 @@ impl FileEntry {
             ));
         }
 
-        let ino = u32_from_hex(fh)?;
-        let mode = u32_from_hex(fh)?;
-        let uid = u32_from_hex(fh)?;
-        let gid = u32_from_hex(fh)?;
-        let nlink = u32_from_hex(fh)?;
-        let mtime = u32_from_hex(fh)?;
-        let file_size = u32_from_hex(fh)?;
-        let dev_major = u32_from_hex(fh)?;
-        let dev_minor = u32_from_hex(fh)?;
-        let rdev_major = u32_from_hex(fh)?;
-        let rdev_minor = u32_from_hex(fh)?;
-        let name_size = u32_from_hex(fh)?;
+        let ino = u32_from_hex(reader)?;
+        let mode = u32_from_hex(reader)?;
+        let uid = u32_from_hex(reader)?;
+        let gid = u32_from_hex(reader)?;
+        let nlink = u32_from_hex(reader)?;
+        let mtime = u32_from_hex(reader)?;
+        let file_size = u32_from_hex(reader)?;
+        let dev_major = u32_from_hex(reader)?;
+        let dev_minor = u32_from_hex(reader)?;
+        let rdev_major = u32_from_hex(reader)?;
+        let rdev_minor = u32_from_hex(reader)?;
+        let name_size = u32_from_hex(reader)?;
         let mut checksum = [0_u8; 8];
-        fh.read_exact(&mut checksum)?;
+        reader.read_exact(&mut checksum)?;
 
         // optimise later
         let mut name_bytes = vec![0_u8; name_size as usize];
-        fh.read_exact(&mut name_bytes)?;
+        reader.read_exact(&mut name_bytes)?;
         let name =
             String::from_utf8(name_bytes[0..(name_size - 1) as usize].to_vec()).map_err(|e| {
                 io::Error::new(
@@ -60,8 +60,8 @@ impl FileEntry {
             })?;
 
         // aligning to 4 bytes: name +
-        let pos = align_bytes(name_size + 6, 4);
-        fh.seek(io::SeekFrom::Current(pos.into()))?;
+        let position = align_bytes(name_size + 6, 4);
+        reader.seek(io::SeekFrom::Current(position.into()))?;
 
         Ok(FileEntry {
             name,
@@ -84,9 +84,9 @@ fn align_bytes(from: u32, n: u32) -> u32 {
     (n - from % n) % n
 }
 
-fn u32_from_hex<R: Read + Seek>(fh: &mut R) -> Result<u32, io::Error> {
+fn u32_from_hex<R: Read + Seek>(reader: &mut R) -> Result<u32, io::Error> {
     let mut raw_bytes = [0_u8; 8];
-    fh.read_exact(&mut raw_bytes)?;
+    reader.read_exact(&mut raw_bytes)?;
 
     let v = Vec::from_hex(raw_bytes).map_err(|e| {
         io::Error::new(
@@ -99,13 +99,13 @@ fn u32_from_hex<R: Read + Seek>(fh: &mut R) -> Result<u32, io::Error> {
     Ok(u32::from_be_bytes(bytes))
 }
 
-pub fn read_entries<R: Read + Seek>(fh: &mut R) -> Result<Vec<FileEntry>, io::Error> {
+pub fn read_entries<R: Read + Seek>(reader: &mut R) -> Result<Vec<FileEntry>, io::Error> {
     let mut entries = Vec::new();
 
     loop {
-        let entry = FileEntry::read(fh)?;
-        let pos = align_bytes(entry.file_size, 4) + entry.file_size;
-        fh.seek(io::SeekFrom::Current(pos.into()))?;
+        let entry = FileEntry::read(reader)?;
+        let position = align_bytes(entry.file_size, 4) + entry.file_size;
+        reader.seek(io::SeekFrom::Current(position.into()))?;
         if &entry.name == "TRAILER!!!" {
             break;
         }
@@ -115,25 +115,22 @@ pub fn read_entries<R: Read + Seek>(fh: &mut R) -> Result<Vec<FileEntry>, io::Er
 }
 
 pub fn read_entry<R: Read + Seek, W: Write>(
-    fh: &mut R,
-    wfh: &mut W,
+    reader: &mut R,
+    writer: &mut W,
 ) -> Result<(FileEntry, u64), io::Error> {
-    let entry = FileEntry::read(fh)?;
-    let number = io::copy(fh, wfh)?;
-    let pos = align_bytes(entry.file_size, 4);
-    fh.seek(io::SeekFrom::Current(pos.into()))?;
+    let entry = FileEntry::read(reader)?;
+    let number = io::copy(reader, writer)?;
+    let position = align_bytes(entry.file_size, 4);
+    reader.seek(io::SeekFrom::Current(position.into()))?;
     Ok((entry, number))
 }
 
-pub fn extract_entry<R: Read + Seek, W: Write>(
-    reader: &mut R,
-    dir: &PathBuf,
-) -> Result<u64, io::Error> {
+pub fn extract_entry<R: Read + Seek>(reader: &mut R, dir: &PathBuf) -> Result<u64, io::Error> {
     let entry = FileEntry::read(reader)?;
     let path = dir.join(entry.name);
     let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
     let number = io::copy(reader, &mut writer)?;
-    let pos = align_bytes(entry.file_size, 4);
-    reader.seek(io::SeekFrom::Current(pos.into()))?;
+    let position = align_bytes(entry.file_size, 4);
+    reader.seek(io::SeekFrom::Current(position.into()))?;
     Ok(number)
 }
