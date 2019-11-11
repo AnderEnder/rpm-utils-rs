@@ -17,7 +17,7 @@ struct Args {
 }
 
 fn run(args: Args) -> Result<(), io::Error> {
-    let rpm = RPMFile::open(&args.path)?;
+    let rpm = RPMFile::open(args.path)?;
     rpm.copy_payload(&args.output)?;
     Ok(())
 }
