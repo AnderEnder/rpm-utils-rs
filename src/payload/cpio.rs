@@ -120,10 +120,10 @@ pub fn read_entry<R: Read + Seek, W: Write>(
     writer: &mut W,
 ) -> Result<(FileEntry, u64), io::Error> {
     let entry = FileEntry::read(reader)?;
-    let number = io::copy(reader, writer)?;
+    let number = io_copy_exact(reader, writer, entry.file_size)?;
     let position = align_bytes(entry.file_size, 4);
     reader.seek(io::SeekFrom::Current(position.into()))?;
-    Ok((entry, number))
+    Ok((entry, number.into()))
 }
 
 pub fn extract_entry<R: Read + Seek>(
@@ -229,4 +229,56 @@ fn io_copy_exact<R: Read, W: Write>(
     }
 
     Ok(count)
+}
+
+struct CpioFiles<T> {
+    reader: T,
+}
+
+impl<T: Read + Seek> CpioFiles<T> {
+    pub fn new(reader: T) -> Self {
+        CpioFiles { reader }
+    }
+}
+
+impl<T: Read + Seek> Iterator for CpioFiles<T> {
+    type Item = (FileEntry, Vec<u8>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut bytes = Vec::new();
+        let (entry, _) = read_entry(&mut self.reader, &mut bytes).unwrap();
+        if &entry.name != "TRAILER!!!" {
+            Some((entry, bytes))
+        } else {
+            None
+        }
+    }
+}
+
+struct CpioEntries<T> {
+    reader: T,
+}
+
+impl<T: Read + Seek> CpioEntries<T> {
+    pub fn new(reader: T) -> Self {
+        CpioEntries { reader }
+    }
+}
+
+impl<T: Read + Seek> Iterator for CpioEntries<T> {
+    type Item = FileEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let entry = FileEntry::read(&mut self.reader).unwrap();
+        let position = align_bytes(entry.file_size, 4) + entry.file_size;
+        self.reader
+            .seek(io::SeekFrom::Current(position.into()))
+            .unwrap();
+
+        if &entry.name != "TRAILER!!!" {
+            Some(entry)
+        } else {
+            None
+        }
+    }
 }
