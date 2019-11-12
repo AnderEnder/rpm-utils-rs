@@ -130,6 +130,7 @@ pub fn extract_entry<R: Read + Seek>(
     reader: &mut R,
     dir: &PathBuf,
     creates_dir: bool,
+    change_owner: bool,
 ) -> Result<(FileEntry, u64), io::Error> {
     let entry = FileEntry::read(reader)?;
 
@@ -155,7 +156,30 @@ pub fn extract_entry<R: Read + Seek>(
             reader.seek(io::SeekFrom::Current(position.into()))?;
         }
 
-        path_set_meta(&path, entry.mode)?;
+        #[cfg(all(unix))]
+        {
+            if change_owner {
+                use nix::unistd::{chown, Gid, Uid};
+                use std::os::unix::fs::PermissionsExt;
+
+                let metadata = path.metadata()?;
+                let mut permissions = metadata.permissions();
+                permissions.set_mode(entry.mode);
+                std::fs::set_permissions(&path, permissions)?;
+                chown(
+                    &path,
+                    Some(Uid::from_raw(entry.uid)),
+                    Some(Gid::from_raw(entry.gid)),
+                )
+                .map_err(|e| {
+                    io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("Error: can not change owner {}", e),
+                    )
+                })?
+            }
+        }
+
         let mtime = FileTime::from_unix_time(entry.mtime.into(), 0);
         set_file_mtime(&path, mtime)?;
         Ok((entry, number.into()))
@@ -168,10 +192,11 @@ pub fn extract_entries<R: Read + Seek>(
     reader: &mut R,
     dir: &PathBuf,
     creates_dir: bool,
+    change_owner: bool,
 ) -> Result<Vec<FileEntry>, io::Error> {
     let mut entries = Vec::new();
     loop {
-        let (entry, _) = extract_entry(reader, dir, creates_dir)?;
+        let (entry, _) = extract_entry(reader, dir, creates_dir, change_owner)?;
         if &entry.name == "TRAILER!!!" {
             println!("Extracting {}", &entry.name);
             break;
@@ -204,19 +229,4 @@ fn io_copy_exact<R: Read, W: Write>(
     }
 
     Ok(count)
-}
-#[cfg(all(unix))]
-use std::os::unix::fs::PermissionsExt;
-
-#[cfg(all(unix))]
-fn path_set_meta(file: &PathBuf, mode: u32) -> Result<(), io::Error> {
-    let metadata = file.metadata()?;
-    let mut permissions = metadata.permissions();
-    permissions.set_mode(mode);
-    std::fs::set_permissions(file, permissions)
-}
-
-#[cfg(all(windows))]
-fn path_set_meta(file: &PathBuf, mode: u32) -> Result<(), io::Error> {
-    Ok(())
 }

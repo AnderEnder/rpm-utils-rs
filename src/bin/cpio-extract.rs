@@ -29,7 +29,7 @@ fn run(args: Args) -> Result<(), io::Error> {
             println!("{:#?}", entry);
         }
     } else {
-        let entries = payload::extract_entries(&mut file, &args.target_dir, true)?;
+        let entries = payload::extract_entries(&mut file, &args.target_dir, true, false)?;
         for entry in &entries {
             println!("Extracting {}", &entry.name);
         }

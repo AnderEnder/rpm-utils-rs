@@ -1,7 +1,7 @@
 [package]
 name = "rpm-utils"
 version = "0.1.0"
-authors = ["ander <ander.ender@gmail.com>"]
+authors = ["Andrii Radyk <ander.ender@gmail.com>"]
 edition = "2018"
 
 [dependencies]
@@ -17,3 +17,6 @@ zstd = "0.5"
 xz2 = "0.1"
 hex = "0.4"
 filetime = "0.2"
+
+[target.'cfg(unix)'.dependencies]
+nix = "0.15"
