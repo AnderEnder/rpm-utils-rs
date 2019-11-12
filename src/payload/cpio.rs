@@ -153,7 +153,7 @@ pub fn extract_entry<R: Read + Seek>(
             let metadata = writer.metadata()?;
             let mut permissions = metadata.permissions();
             permissions.set_mode(entry.mode);
-            writer.set_permissions(permissions);
+            writer.set_permissions(permissions)?;
 
             let number = io_copy_exact(reader, &mut writer, entry.file_size)?;
             let position = align_bytes(entry.file_size, 4);

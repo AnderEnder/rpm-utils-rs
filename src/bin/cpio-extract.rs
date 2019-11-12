@@ -37,13 +37,11 @@ fn run(args: Args) -> Result<(), io::Error> {
     Ok(())
 }
 
-fn main() -> Result<(), io::Error> {
+fn main() {
     let args = Args::from_args();
-    run(args)
-    /*
+
     if let Err(err) = run(args) {
         eprintln!("{}", err);
         exit(1);
     }
-    */
 }
