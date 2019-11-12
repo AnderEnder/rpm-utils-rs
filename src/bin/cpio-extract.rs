@@ -12,24 +12,38 @@ struct Args {
     #[structopt(name = "path", parse(from_os_str))]
     path: PathBuf,
 
-    /// Outputs results in JSON form
+    /// Print debug information
     #[structopt(long = "debug", short = "d")]
     debug: bool,
+
+    /// Target directory to extract
+    #[structopt(short = "e", parse(from_os_str))]
+    target_dir: PathBuf,
 }
 
 fn run(args: Args) -> Result<(), io::Error> {
-    let mut file = File::open(args.path)?;
-    let entries = payload::read_entries(&mut file)?;
-    for entry in &entries {
-        println!("{:#?}", entry);
+    let mut file = File::open(&args.path)?;
+    if args.debug {
+        let entries = payload::read_entries(&mut file)?;
+        for entry in &entries {
+            println!("{:#?}", entry);
+        }
+    } else {
+        let entries = payload::extract_entries(&mut file, &args.target_dir, true)?;
+        for entry in &entries {
+            println!("Extracting {}", &entry.name);
+        }
     }
     Ok(())
 }
 
-fn main() {
+fn main() -> Result<(), io::Error> {
     let args = Args::from_args();
+    run(args)
+    /*
     if let Err(err) = run(args) {
         eprintln!("{}", err);
         exit(1);
     }
+    */
 }

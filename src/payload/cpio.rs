@@ -7,18 +7,18 @@ const MAGIC: &[u8] = b"070701";
 
 #[derive(Debug, Default)]
 pub struct FileEntry {
-    name: String,
-    ino: u32,
-    mode: u32,
-    uid: u32,
-    gid: u32,
-    nlink: u32,
-    mtime: u32,
-    file_size: u32,
-    dev_major: u32,
-    dev_minor: u32,
-    rdev_major: u32,
-    rdev_minor: u32,
+    pub name: String,
+    pub ino: u32,
+    pub mode: u32,
+    pub uid: u32,
+    pub gid: u32,
+    pub nlink: u32,
+    pub mtime: u32,
+    pub file_size: u32,
+    pub dev_major: u32,
+    pub dev_minor: u32,
+    pub rdev_major: u32,
+    pub rdev_minor: u32,
 }
 
 impl FileEntry {
@@ -125,12 +125,77 @@ pub fn read_entry<R: Read + Seek, W: Write>(
     Ok((entry, number))
 }
 
-pub fn extract_entry<R: Read + Seek>(reader: &mut R, dir: &PathBuf) -> Result<u64, io::Error> {
+pub fn extract_entry<R: Read + Seek>(
+    reader: &mut R,
+    dir: &PathBuf,
+    creates_dir: bool,
+) -> Result<(FileEntry, u64), io::Error> {
     let entry = FileEntry::read(reader)?;
-    let path = dir.join(entry.name);
-    let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
-    let number = io::copy(reader, &mut writer)?;
-    let position = align_bytes(entry.file_size, 4);
-    reader.seek(io::SeekFrom::Current(position.into()))?;
-    Ok(number)
+
+    // write content to file only if it is not a last pseudo
+    if &entry.name != "TRAILER!!!" {
+        let path = dir.join(&entry.name);
+
+        if entry.nlink == 2 {
+            std::fs::create_dir_all(path)?;
+            Ok((entry, 0))
+        } else {
+            if creates_dir {
+                let parent = path.parent();
+                if let Some(p) = parent {
+                    std::fs::create_dir_all(p)?;
+                }
+            }
+
+            let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
+            let number = io_copy_exact(reader, &mut writer, entry.file_size)?;
+            let position = align_bytes(entry.file_size, 4);
+            reader.seek(io::SeekFrom::Current(position.into()))?;
+            Ok((entry, number.into()))
+        }
+    } else {
+        Ok((entry, 0))
+    }
+}
+
+pub fn extract_entries<R: Read + Seek>(
+    reader: &mut R,
+    dir: &PathBuf,
+    creates_dir: bool,
+) -> Result<Vec<FileEntry>, io::Error> {
+    let mut entries = Vec::new();
+    loop {
+        let (entry, _) = extract_entry(reader, dir, creates_dir)?;
+        if &entry.name == "TRAILER!!!" {
+            println!("Extracting {}", &entry.name);
+            break;
+        }
+        entries.push(entry);
+    }
+    Ok(entries)
+}
+
+const BUFSIZE: usize = 8 * 1024;
+
+fn io_copy_exact<R: Read, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    count: u32,
+) -> Result<u32, io::Error> {
+    let mut buf = [0_u8; BUFSIZE];
+    let buf_count = count as usize / BUFSIZE;
+    let buf_left = count as usize % BUFSIZE;
+
+    for _ in 0..buf_count {
+        reader.read_exact(&mut buf)?;
+        writer.write_all(&buf)?;
+    }
+
+    if buf_left > 0 {
+        let mut buf2 = vec![0_u8; buf_left];
+        reader.read_exact(&mut buf2)?;
+        writer.write_all(&buf2)?;
+    }
+
+    Ok(count)
 }
