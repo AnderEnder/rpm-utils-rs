@@ -1,3 +1,4 @@
+use filetime::{set_file_mtime, FileTime};
 use hex::FromHex;
 use std::fs::OpenOptions;
 use std::io::{self, Read, Seek, Write};
@@ -135,11 +136,10 @@ pub fn extract_entry<R: Read + Seek>(
     // write content to file only if it is not a last pseudo
     if &entry.name != "TRAILER!!!" {
         let path = dir.join(&entry.name);
+        let mut number = 0;
 
         if entry.nlink == 2 {
             std::fs::create_dir_all(&path)?;
-            path_set_meta(&path, entry.mode)?;
-            Ok((entry, 0))
         } else {
             if creates_dir {
                 let parent = path.parent();
@@ -149,12 +149,16 @@ pub fn extract_entry<R: Read + Seek>(
             }
 
             let mut writer = OpenOptions::new().create(true).write(true).open(&path)?;
-            let number = io_copy_exact(reader, &mut writer, entry.file_size)?;
-            path_set_meta(&path, entry.mode)?;
+            number = io_copy_exact(reader, &mut writer, entry.file_size)?;
+
             let position = align_bytes(entry.file_size, 4);
             reader.seek(io::SeekFrom::Current(position.into()))?;
-            Ok((entry, number.into()))
         }
+
+        path_set_meta(&path, entry.mode)?;
+        let mtime = FileTime::from_unix_time(entry.mtime.into(), 0);
+        set_file_mtime(&path, mtime)?;
+        Ok((entry, number.into()))
     } else {
         Ok((entry, 0))
     }
