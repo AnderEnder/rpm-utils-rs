@@ -3,9 +3,6 @@ use std::fs::OpenOptions;
 use std::io::{self, Read, Seek, Write};
 use std::path::PathBuf;
 
-#[cfg(all(unix))]
-use std::os::unix::fs::PermissionsExt;
-
 const MAGIC: &[u8] = b"070701";
 
 #[derive(Debug, Default)]
@@ -140,7 +137,8 @@ pub fn extract_entry<R: Read + Seek>(
         let path = dir.join(&entry.name);
 
         if entry.nlink == 2 {
-            std::fs::create_dir_all(path)?;
+            std::fs::create_dir_all(&path)?;
+            path_set_meta(&path, entry.mode)?;
             Ok((entry, 0))
         } else {
             if creates_dir {
@@ -150,16 +148,9 @@ pub fn extract_entry<R: Read + Seek>(
                 }
             }
 
-            let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
-
-            if cfg!(unix) {
-                let metadata = writer.metadata()?;
-                let mut permissions = metadata.permissions();
-                permissions.set_mode(entry.mode);
-                writer.set_permissions(permissions)?;
-            }
-
+            let mut writer = OpenOptions::new().create(true).write(true).open(&path)?;
             let number = io_copy_exact(reader, &mut writer, entry.file_size)?;
+            path_set_meta(&path, entry.mode)?;
             let position = align_bytes(entry.file_size, 4);
             reader.seek(io::SeekFrom::Current(position.into()))?;
             Ok((entry, number.into()))
@@ -209,4 +200,19 @@ fn io_copy_exact<R: Read, W: Write>(
     }
 
     Ok(count)
+}
+#[cfg(all(unix))]
+use std::os::unix::fs::PermissionsExt;
+
+#[cfg(all(unix))]
+fn path_set_meta(file: &PathBuf, mode: u32) -> Result<(), io::Error> {
+    let metadata = file.metadata()?;
+    let mut permissions = metadata.permissions();
+    permissions.set_mode(mode);
+    std::fs::set_permissions(file, permissions)
+}
+
+#[cfg(all(windows))]
+fn path_set_meta(file: &PathBuf, mode: u32) -> Result<(), io::Error> {
+    Ok(())
 }
