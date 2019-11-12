@@ -1,8 +1,10 @@
 use hex::FromHex;
 use std::fs::OpenOptions;
 use std::io::{self, Read, Seek, Write};
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+
+#[cfg(all(unix))]
+use std::os::unix::fs::PermissionsExt;
 
 const MAGIC: &[u8] = b"070701";
 
@@ -150,10 +152,12 @@ pub fn extract_entry<R: Read + Seek>(
 
             let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
 
-            let metadata = writer.metadata()?;
-            let mut permissions = metadata.permissions();
-            permissions.set_mode(entry.mode);
-            writer.set_permissions(permissions)?;
+            if cfg!(unix) {
+                let metadata = writer.metadata()?;
+                let mut permissions = metadata.permissions();
+                permissions.set_mode(entry.mode);
+                writer.set_permissions(permissions)?;
+            }
 
             let number = io_copy_exact(reader, &mut writer, entry.file_size)?;
             let position = align_bytes(entry.file_size, 4);
