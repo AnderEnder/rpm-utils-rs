@@ -11,7 +11,7 @@ struct Args {
     #[structopt(name = "path", parse(from_os_str))]
     path: PathBuf,
 
-    /// Outputs results in JSON form
+    /// Show internal debug information
     #[structopt(long = "debug", short = "d")]
     debug: bool,
 }

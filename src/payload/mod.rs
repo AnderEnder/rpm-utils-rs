@@ -1,3 +1,7 @@
+mod cpio;
+
+pub use cpio::*;
+
 #[derive(Debug)]
 pub struct FileInfo {
     pub name: String,
