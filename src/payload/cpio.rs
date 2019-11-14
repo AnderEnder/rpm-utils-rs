@@ -5,6 +5,7 @@ use std::io::{self, Read, Seek, Write};
 use std::path::PathBuf;
 
 const MAGIC: &[u8] = b"070701";
+const TRAILER: &str = "TRAILER!!!";
 
 #[derive(Debug, Default)]
 pub struct FileEntry {
@@ -79,10 +80,99 @@ impl FileEntry {
             rdev_minor,
         })
     }
+
+    pub fn write<W: Write>(
+        writer: &mut W,
+        entry: FileEntry,
+        file: &PathBuf,
+    ) -> Result<(), io::Error> {
+        let mut magic = [0_u8; 6];
+        writer.write(MAGIC)?;
+        writer.write(u32_to_hex(entry.ino))?;
+        writer.write(u32_to_hex(entry.mode))?;
+        writer.write(u32_to_hex(entry.uid))?;
+        writer.write(u32_to_hex(entry.gid))?;
+        writer.write(u32_to_hex(entry.nlink))?;
+        writer.write(u32_to_hex(entry.mtime))?;
+        writer.write(u32_to_hex(entry.file_size))?;
+        writer.write(u32_to_hex(entry.dev_major))?;
+        writer.write(u32_to_hex(entry.dev_minor))?;
+        writer.write(u32_to_hex(entry.rdev_major))?;
+        writer.write(u32_to_hex(entry.rdev_minor))?;
+        writer.write(u32_to_hex(entry.name.len() as u32))?;
+        writer.write(&[0_u8; 8])?;
+
+        let mut name = entry.name.as_bytes().to_vec();
+        name.push(0_u8);
+        writer.write(&name)?;
+
+        // aligning to 4 bytes
+        let position = align_bytes(entry.name.len() as u32 + 6, 4) as u8;
+        let pad = vec![0_u8, position];
+        writer.write(&pad)?;
+
+        Ok(())
+    }
+}
+
+impl From<&PathBuf> for FileEntry {
+    fn from(f: &PathBuf) -> Self {
+        let meta = f.metadata().unwrap();
+        let name = f.file_name().unwrap().to_str().unwrap().to_owned();
+        #[cfg(all(unix))]
+        {
+            use std::os::unix::fs::MetadataExt;
+            FileEntry {
+                name,
+                ino: meta.ino() as u32,
+                mode: meta.mode(),
+                uid: meta.uid(),
+                gid: meta.gid(),
+                nlink: meta.nlink() as u32,
+                mtime: meta.mtime() as u32,
+                file_size: meta.size() as u32,
+                dev_major: major(meta.dev() as u32),
+                dev_minor: minor(meta.dev() as u32),
+                rdev_major: major(meta.rdev() as u32),
+                rdev_minor: minor(meta.rdev() as u32),
+            }
+        }
+        #[cfg(all(windows))]
+        {
+            // TODO: reimplement properly for Windows
+            use std::os::windows::fs::MetadataExt;
+            FileEntry {
+                name,
+                ino: 1,
+                mode: meta.file_attributes() as u32,
+                uid: 0,
+                gid: 0,
+                nlink: 0,
+                mtime: meta.last_write_time() as u32,
+                file_size: meta.file_size() as u32,
+                dev_major: 0,
+                dev_minor: 0,
+                rdev_major: 0,
+                rdev_minor: 0,
+            }
+        }
+    }
+}
+
+fn major(x: u32) -> u32 {
+    ((x >> 8) & 0x7F)
+}
+
+fn minor(x: u32) -> u32 {
+    (x & 0xFF)
 }
 
 fn align_bytes(from: u32, n: u32) -> u32 {
     (n - from % n) % n
+}
+
+fn u32_to_hex(from: u32) -> &[u8] {
+    format!("{:x}", from).as_bytes()
 }
 
 fn u32_from_hex<R: Read + Seek>(reader: &mut R) -> Result<u32, io::Error> {
@@ -107,7 +197,7 @@ pub fn read_entries<R: Read + Seek>(reader: &mut R) -> Result<Vec<FileEntry>, io
         let entry = FileEntry::read(reader)?;
         let position = align_bytes(entry.file_size, 4) + entry.file_size;
         reader.seek(io::SeekFrom::Current(position.into()))?;
-        if &entry.name == "TRAILER!!!" {
+        if entry.name == TRAILER {
             break;
         }
         entries.push(entry);
@@ -135,7 +225,7 @@ pub fn extract_entry<R: Read + Seek>(
     let entry = FileEntry::read(reader)?;
 
     // write content to file only if it is not a last pseudo
-    if &entry.name != "TRAILER!!!" {
+    if entry.name != TRAILER {
         let path = dir.join(&entry.name);
         let mut number = 0;
 
@@ -197,7 +287,7 @@ pub fn extract_entries<R: Read + Seek>(
     let mut entries = Vec::new();
     loop {
         let (entry, _) = extract_entry(reader, dir, creates_dir, change_owner)?;
-        if &entry.name == "TRAILER!!!" {
+        if entry.name == TRAILER {
             println!("Extracting {}", &entry.name);
             break;
         }
@@ -247,7 +337,7 @@ impl<T: Read + Seek> Iterator for CpioFiles<T> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut bytes = Vec::new();
         let (entry, _) = read_entry(&mut self.reader, &mut bytes).unwrap();
-        if &entry.name != "TRAILER!!!" {
+        if entry.name != TRAILER {
             Some((entry, bytes))
         } else {
             None
@@ -275,10 +365,26 @@ impl<T: Read + Seek> Iterator for CpioEntries<T> {
             .seek(io::SeekFrom::Current(position.into()))
             .unwrap();
 
-        if &entry.name != "TRAILER!!!" {
+        if entry.name != TRAILER {
             Some(entry)
         } else {
             None
         }
+    }
+}
+
+struct CpioWrite<T> {
+    writer: T,
+}
+
+impl<T: Read + Seek> CpioWrite<T> {
+    pub fn new(writer: T) -> Self {
+        CpioWrite { writer }
+    }
+
+    pub fn write(file: &PathBuf) -> Result<(), io::Error> {
+        let entry: FileEntry = file.into();
+
+        Ok(())
     }
 }
