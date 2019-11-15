@@ -35,18 +35,18 @@ impl FileEntry {
             ));
         }
 
-        let ino = u32_from_hex(reader)?;
-        let mode = u32_from_hex(reader)?;
-        let uid = u32_from_hex(reader)?;
-        let gid = u32_from_hex(reader)?;
-        let nlink = u32_from_hex(reader)?;
-        let mtime = u32_from_hex(reader)?;
-        let file_size = u32_from_hex(reader)?;
-        let dev_major = u32_from_hex(reader)?;
-        let dev_minor = u32_from_hex(reader)?;
-        let rdev_major = u32_from_hex(reader)?;
-        let rdev_minor = u32_from_hex(reader)?;
-        let name_size = u32_from_hex(reader)?;
+        let ino = reader.read_hex_as_u32()?;
+        let mode = reader.read_hex_as_u32()?;
+        let uid = reader.read_hex_as_u32()?;
+        let gid = reader.read_hex_as_u32()?;
+        let nlink = reader.read_hex_as_u32()?;
+        let mtime = reader.read_hex_as_u32()?;
+        let file_size = reader.read_hex_as_u32()?;
+        let dev_major = reader.read_hex_as_u32()?;
+        let dev_minor = reader.read_hex_as_u32()?;
+        let rdev_major = reader.read_hex_as_u32()?;
+        let rdev_minor = reader.read_hex_as_u32()?;
+        let name_size = reader.read_hex_as_u32()?;
         let mut checksum = [0_u8; 8];
         reader.read_exact(&mut checksum)?;
 
@@ -81,26 +81,21 @@ impl FileEntry {
         })
     }
 
-    pub fn write<W: Write>(
-        writer: &mut W,
-        entry: FileEntry,
-        file: &PathBuf,
-    ) -> Result<(), io::Error> {
-        let mut magic = [0_u8; 6];
+    pub fn write<W: Write>(writer: &mut W, entry: FileEntry) -> Result<(), io::Error> {
         writer.write_all(MAGIC)?;
-        u32_to_hex(writer, entry.ino)?;
-        u32_to_hex(writer, entry.ino)?;
-        u32_to_hex(writer, entry.mode)?;
-        u32_to_hex(writer, entry.uid)?;
-        u32_to_hex(writer, entry.gid)?;
-        u32_to_hex(writer, entry.nlink)?;
-        u32_to_hex(writer, entry.mtime)?;
-        u32_to_hex(writer, entry.file_size)?;
-        u32_to_hex(writer, entry.dev_major)?;
-        u32_to_hex(writer, entry.dev_minor)?;
-        u32_to_hex(writer, entry.rdev_major)?;
-        u32_to_hex(writer, entry.rdev_minor)?;
-        u32_to_hex(writer, entry.name.len() as u32)?;
+        writer.write_u32_as_hex(entry.ino)?;
+        writer.write_u32_as_hex(entry.ino)?;
+        writer.write_u32_as_hex(entry.mode)?;
+        writer.write_u32_as_hex(entry.uid)?;
+        writer.write_u32_as_hex(entry.gid)?;
+        writer.write_u32_as_hex(entry.nlink)?;
+        writer.write_u32_as_hex(entry.mtime)?;
+        writer.write_u32_as_hex(entry.file_size)?;
+        writer.write_u32_as_hex(entry.dev_major)?;
+        writer.write_u32_as_hex(entry.dev_minor)?;
+        writer.write_u32_as_hex(entry.rdev_major)?;
+        writer.write_u32_as_hex(entry.rdev_minor)?;
+        writer.write_u32_as_hex(entry.name.len() as u32)?;
         writer.write_all(&[0_u8; 8])?;
 
         let mut name = entry.name.as_bytes().to_vec();
@@ -172,24 +167,42 @@ fn align_bytes(from: u32, n: u32) -> u32 {
     (n - from % n) % n
 }
 
-fn u32_to_hex<W: Write>(writer: &mut W, from: u32) -> Result<(), io::Error> {
-    writer.write_all(format!("{:x}", from).as_bytes())?;
-    Ok(())
+pub trait HexWriter {
+    fn write_u32_as_hex(&mut self, from: u32) -> Result<(), io::Error>;
 }
 
-fn u32_from_hex<R: Read + Seek>(reader: &mut R) -> Result<u32, io::Error> {
-    let mut raw_bytes = [0_u8; 8];
-    reader.read_exact(&mut raw_bytes)?;
+impl<W> HexWriter for W
+where
+    W: Write,
+{
+    fn write_u32_as_hex(&mut self, from: u32) -> Result<(), io::Error> {
+        self.write_all(format!("{:x}", from).as_bytes())?;
+        Ok(())
+    }
+}
 
-    let v = Vec::from_hex(raw_bytes).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("Error: can not parse hex {}", e),
-        )
-    })?;
+pub trait HexReader {
+    fn read_hex_as_u32(&mut self) -> Result<u32, io::Error>;
+}
 
-    let bytes = [v[0], v[1], v[2], v[3]];
-    Ok(u32::from_be_bytes(bytes))
+impl<R> HexReader for R
+where
+    R: Read,
+{
+    fn read_hex_as_u32(&mut self) -> Result<u32, io::Error> {
+        let mut raw_bytes = [0_u8; 8];
+        self.read_exact(&mut raw_bytes)?;
+
+        let v = Vec::from_hex(raw_bytes).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("Error: can not parse hex {}", e),
+            )
+        })?;
+
+        let bytes = [v[0], v[1], v[2], v[3]];
+        Ok(u32::from_be_bytes(bytes))
+    }
 }
 
 pub fn read_entries<R: Read + Seek>(reader: &mut R) -> Result<Vec<FileEntry>, io::Error> {
