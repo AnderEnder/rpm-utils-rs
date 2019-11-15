@@ -1,5 +1,6 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
+use std::convert::TryFrom;
 use std::io;
 use std::io::{Read, Seek};
 use strum_macros::Display;
@@ -36,75 +37,186 @@ pub enum RType {
     I18nstring(String),
 }
 
-impl From<RType> for String {
-    fn from(t: RType) -> String {
-        match t {
-            RType::Null | RType::Bin(_) => String::default(),
-            RType::Char(v) => v.to_string(),
-            RType::String(v) | RType::I18nstring(v) => v.to_string(),
-            RType::Int8(v) => v.to_string(),
-            RType::Int16(v) => v.to_string(),
-            RType::Int32(v) => v.to_string(),
-            RType::Int64(v) => v.to_string(),
-            RType::StringArray(v) => v.join(""),
-            _ => String::default(),
+impl RType {
+    pub fn as_string(&self) -> Option<String> {
+        match self {
+            RType::Null => Some(Default::default()),
+            RType::Bin(b) => Some(format!("{:x?}", b)),
+            RType::Char(s) => Some(s.to_string()),
+            RType::String(s) | RType::I18nstring(s) => Some(s.to_owned()),
+            RType::Int8(n) => Some(n.to_string()),
+            RType::Int16(n) => Some(n.to_string()),
+            RType::Int32(n) => Some(n.to_string()),
+            RType::Int64(n) => Some(n.to_string()),
+            RType::StringArray(a) => Some(a.join(",")),
+            _ => None,
+        }
+    }
+
+    pub fn as_string_array(&self) -> Option<Vec<String>> {
+        match self {
+            RType::StringArray(a) => Some(a.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            RType::Int8(n) => Some(u64::from(*n)),
+            RType::Int16(n) => Some(u64::from(*n)),
+            RType::Int32(n) => Some(u64::from(*n)),
+            RType::Int64(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    pub fn as_u64_array(&self) -> Option<Vec<u64>> {
+        match self {
+            RType::Int8Array(a) => Some(a.iter().map(|x| u64::from(*x)).collect()),
+            RType::Int16Array(a) => Some(a.iter().map(|x| u64::from(*x)).collect()),
+            RType::Int32Array(a) => Some(a.iter().map(|x| u64::from(*x)).collect()),
+            RType::Int64Array(a) => Some(a.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_u32(&self) -> Option<u32> {
+        match self {
+            RType::Int8(n) => Some(u32::from(*n)),
+            RType::Int16(n) => Some(u32::from(*n)),
+            RType::Int32(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    pub fn as_u32_array(&self) -> Option<Vec<u32>> {
+        match self {
+            RType::Int8Array(a) => Some(a.iter().map(|x| u32::from(*x)).collect()),
+            RType::Int16Array(a) => Some(a.iter().map(|x| u32::from(*x)).collect()),
+            RType::Int32Array(a) => Some(a.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_u16(&self) -> Option<u16> {
+        match self {
+            RType::Int8(n) => Some(u16::from(*n)),
+            RType::Int16(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    pub fn as_u16_array(&self) -> Option<Vec<u16>> {
+        match self {
+            RType::Int8Array(a) => Some(a.iter().map(|x| u16::from(*x)).collect()),
+            RType::Int16Array(a) => Some(a.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_u8(&self) -> Option<u8> {
+        match self {
+            RType::Int8(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    pub fn as_u8_array(&self) -> Option<Vec<u8>> {
+        match self {
+            RType::Int8Array(a) => Some(a.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_char(&self) -> Option<char> {
+        match self {
+            RType::Char(n) => Some(*n),
+            _ => None,
         }
     }
 }
 
-impl From<RType> for u64 {
-    fn from(t: RType) -> u64 {
-        match t {
-            RType::Int8(v) => u64::from(v),
-            RType::Int16(v) => u64::from(v),
-            RType::Int32(v) => u64::from(v),
-            RType::Int64(v) => v,
-            _ => Default::default(),
-        }
+impl TryFrom<RType> for String {
+    type Error = &'static str;
+
+    fn try_from(value: RType) -> Result<Self, Self::Error> {
+        value.as_string().ok_or("can not convert to string")
     }
 }
 
-impl From<RType> for Vec<u64> {
-    fn from(t: RType) -> Vec<u64> {
-        match t {
-            RType::Int8Array(v) => v.into_iter().map(|x| x.into()).collect(),
-            RType::Int16Array(v) => v.into_iter().map(|x| x.into()).collect(),
-            RType::Int32Array(v) => v.into_iter().map(|x| x.into()).collect(),
-            RType::Int64Array(v) => v,
-            _ => Default::default(),
-        }
+impl TryFrom<RType> for Vec<String> {
+    type Error = &'static str;
+
+    fn try_from(value: RType) -> Result<Self, Self::Error> {
+        value
+            .as_string_array()
+            .ok_or("can not convert to string array")
     }
 }
 
-impl From<RType> for Vec<u8> {
-    fn from(t: RType) -> Vec<u8> {
-        match t {
-            RType::Bin(v) | RType::Int8Array(v) => v,
-            _ => Default::default(),
-        }
+impl TryFrom<RType> for u8 {
+    type Error = &'static str;
+
+    fn try_from(value: RType) -> Result<Self, Self::Error> {
+        value.as_u8().ok_or("can not convert to u8")
     }
 }
 
-macro_rules! from_rtype (
-    ($from:path, $to:ty) => (
-        impl From<RType> for $to {
-            fn from(t: RType) -> $to {
-                match t {
-                    $from(v) => v,
-                    _ => Default::default(),
-                }
-            }
-        }
-    );
-);
+impl TryFrom<RType> for Vec<u8> {
+    type Error = &'static str;
 
-from_rtype!(RType::Char, char);
-from_rtype!(RType::Int8, u8);
-from_rtype!(RType::Int16, u16);
-from_rtype!(RType::Int32, u32);
-from_rtype!(RType::Int16Array, Vec<u16>);
-from_rtype!(RType::Int32Array, Vec<u32>);
-from_rtype!(RType::StringArray, Vec<String>);
+    fn try_from(value: RType) -> Result<Self, Self::Error> {
+        value.as_u8_array().ok_or("can not convert to u8 array")
+    }
+}
+
+impl TryFrom<RType> for u16 {
+    type Error = &'static str;
+
+    fn try_from(value: RType) -> Result<Self, Self::Error> {
+        value.as_u16().ok_or("can not convert to u16")
+    }
+}
+
+impl TryFrom<RType> for Vec<u16> {
+    type Error = &'static str;
+
+    fn try_from(value: RType) -> Result<Self, Self::Error> {
+        value.as_u16_array().ok_or("can not convert to u16 array")
+    }
+}
+
+impl TryFrom<RType> for u32 {
+    type Error = &'static str;
+
+    fn try_from(value: RType) -> Result<Self, Self::Error> {
+        value.as_u32().ok_or("can not convert to u32")
+    }
+}
+
+impl TryFrom<RType> for Vec<u32> {
+    type Error = &'static str;
+
+    fn try_from(value: RType) -> Result<Self, Self::Error> {
+        value.as_u32_array().ok_or("can not convert to u32 array")
+    }
+}
+
+impl TryFrom<RType> for u64 {
+    type Error = &'static str;
+
+    fn try_from(value: RType) -> Result<Self, Self::Error> {
+        value.as_u64().ok_or("can not convert to u64")
+    }
+}
+
+impl TryFrom<RType> for Vec<u64> {
+    type Error = &'static str;
+
+    fn try_from(value: RType) -> Result<Self, Self::Error> {
+        value.as_u64_array().ok_or("can not convert to u64 array")
+    }
+}
 
 #[derive(Debug)]
 pub struct Index<T> {
