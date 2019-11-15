@@ -87,29 +87,30 @@ impl FileEntry {
         file: &PathBuf,
     ) -> Result<(), io::Error> {
         let mut magic = [0_u8; 6];
-        writer.write(MAGIC)?;
-        writer.write(u32_to_hex(entry.ino))?;
-        writer.write(u32_to_hex(entry.mode))?;
-        writer.write(u32_to_hex(entry.uid))?;
-        writer.write(u32_to_hex(entry.gid))?;
-        writer.write(u32_to_hex(entry.nlink))?;
-        writer.write(u32_to_hex(entry.mtime))?;
-        writer.write(u32_to_hex(entry.file_size))?;
-        writer.write(u32_to_hex(entry.dev_major))?;
-        writer.write(u32_to_hex(entry.dev_minor))?;
-        writer.write(u32_to_hex(entry.rdev_major))?;
-        writer.write(u32_to_hex(entry.rdev_minor))?;
-        writer.write(u32_to_hex(entry.name.len() as u32))?;
-        writer.write(&[0_u8; 8])?;
+        writer.write_all(MAGIC)?;
+        u32_to_hex(writer, entry.ino)?;
+        u32_to_hex(writer, entry.ino)?;
+        u32_to_hex(writer, entry.mode)?;
+        u32_to_hex(writer, entry.uid)?;
+        u32_to_hex(writer, entry.gid)?;
+        u32_to_hex(writer, entry.nlink)?;
+        u32_to_hex(writer, entry.mtime)?;
+        u32_to_hex(writer, entry.file_size)?;
+        u32_to_hex(writer, entry.dev_major)?;
+        u32_to_hex(writer, entry.dev_minor)?;
+        u32_to_hex(writer, entry.rdev_major)?;
+        u32_to_hex(writer, entry.rdev_minor)?;
+        u32_to_hex(writer, entry.name.len() as u32)?;
+        writer.write_all(&[0_u8; 8])?;
 
         let mut name = entry.name.as_bytes().to_vec();
         name.push(0_u8);
-        writer.write(&name)?;
+        writer.write_all(&name)?;
 
         // aligning to 4 bytes
         let position = align_bytes(entry.name.len() as u32 + 6, 4) as u8;
         let pad = vec![0_u8, position];
-        writer.write(&pad)?;
+        writer.write_all(&pad)?;
 
         Ok(())
     }
@@ -171,8 +172,9 @@ fn align_bytes(from: u32, n: u32) -> u32 {
     (n - from % n) % n
 }
 
-fn u32_to_hex(from: u32) -> &[u8] {
-    format!("{:x}", from).as_bytes()
+fn u32_to_hex<W: Write>(writer: &mut W, from: u32) -> Result<(), io::Error> {
+    writer.write_all(format!("{:x}", from).as_bytes())?;
+    Ok(())
 }
 
 fn u32_from_hex<R: Read + Seek>(reader: &mut R) -> Result<u32, io::Error> {
