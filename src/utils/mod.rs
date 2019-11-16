@@ -1,6 +1,6 @@
+use hex::FromHex;
 use std::io;
 use std::io::{Read, Write};
-use hex::{FromHex, ToHex};
 
 pub fn align_n_bytes(from: u32, n: u32) -> u32 {
     (n - from % n) % n
@@ -29,8 +29,7 @@ where
     W: Write,
 {
     fn write_u32_as_hex(&mut self, from: u32) -> Result<(), io::Error> {
-        // self.write_all(format!("{:x}", from).as_bytes())?;
-        self.write_all(&from.to_string().encode_hex::<String>().as_bytes())?;
+        self.write_all(format!("{:08x}", from).as_bytes())?;
         Ok(())
     }
 }
@@ -62,6 +61,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::u32;
     #[test]
     fn test_allign_n() {
         assert_eq!(align_n_bytes(32, 8), 0);
@@ -69,5 +69,33 @@ mod tests {
         assert_eq!(align_n_bytes(34, 8), 6);
         assert_eq!(align_n_bytes(35, 8), 5);
         assert_eq!(align_n_bytes(39, 8), 1);
+    }
+
+    #[test]
+    #[allow(clippy::string_lit_as_bytes)]
+    fn test_hex_reader() {
+        assert_eq!("00000001".as_bytes().read_hex_as_u32().unwrap(), 1);
+        assert_eq!("00000101".as_bytes().read_hex_as_u32().unwrap(), 257);
+        assert_eq!("000001f1".as_bytes().read_hex_as_u32().unwrap(), 497);
+        assert_eq!("ffffffff".as_bytes().read_hex_as_u32().unwrap(), u32::MAX);
+    }
+
+    #[test]
+    fn test_hex_writer() {
+        let mut buf = Vec::new();
+        buf.write_u32_as_hex(1).unwrap();
+        assert_eq!(buf.as_slice(), b"00000001");
+
+        let mut buf = Vec::new();
+        buf.write_u32_as_hex(257).unwrap();
+        assert_eq!(buf.as_slice(), b"00000101");
+
+        let mut buf = Vec::new();
+        buf.write_u32_as_hex(497).unwrap();
+        assert_eq!(buf.as_slice(), b"000001f1");
+
+        let mut buf = Vec::new();
+        buf.write_u32_as_hex(std::u32::MAX).unwrap();
+        assert_eq!(buf.as_slice(), b"ffffffff");
     }
 }

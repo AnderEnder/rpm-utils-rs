@@ -3,7 +3,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Read, Seek, Write};
 use std::path::PathBuf;
 
-use crate::utils::{align_n_bytes, HexWriter, HexReader};
+use crate::utils::{align_n_bytes, HexReader, HexWriter};
 
 const MAGIC: &[u8] = b"070701";
 const TRAILER: &str = "TRAILER!!!";
