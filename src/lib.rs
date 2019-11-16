@@ -58,7 +58,12 @@ impl RPMFile<File> {
 
 impl<T: 'static + Read + Seek> RPMFile<T> {
     pub fn copy_payload(self, path: &Path) -> Result<u64, io::Error> {
-        let compressor: String = self.header_tags.get(Tag::PayloadCompressor);
+        let compressor: String = self
+            .header_tags
+            .get_value(Tag::PayloadCompressor)
+            .unwrap()
+            .as_string()
+            .unwrap();
         let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
         let mut reader = self.into_uncompress_reader(&compressor)?;
         io::copy(&mut reader, &mut writer)
@@ -121,19 +126,84 @@ impl fmt::Display for RPMInfo {
 
 impl<T: Read> From<&RPMFile<T>> for RPMInfo {
     fn from(rpm: &RPMFile<T>) -> Self {
-        let dirs: Vec<String> = rpm.header_tags.get(Tag::DirNames);
-        let dir_indexes: Vec<u32> = rpm.header_tags.get(Tag::DirIndexes);
-        let basenames: Vec<String> = rpm.header_tags.get(Tag::BaseNames);
-        let filesizes: Vec<u64> = rpm.header_tags.get(Tag::FileSizes);
-        let users: Vec<String> = rpm.header_tags.get(Tag::FileUserName);
-        let groups: Vec<String> = rpm.header_tags.get(Tag::FileGroupName);
-        let flags: Vec<u32> = rpm.header_tags.get(Tag::FileFlags);
-        let mtimes: Vec<u32> = rpm.header_tags.get(Tag::FileMTimes);
-        let linknames: Vec<String> = rpm.header_tags.get(Tag::FileGroupName);
-        let modes: Vec<u16> = rpm.header_tags.get(Tag::FileModes);
-        let devices: Vec<u32> = rpm.header_tags.get(Tag::FileDevices);
-        let inodes: Vec<u32> = rpm.header_tags.get(Tag::FileInodes);
-        let digests: Vec<String> = rpm.header_tags.get(Tag::FileMD5s);
+        let dirs = rpm
+            .header_tags
+            .get_value(Tag::DirNames)
+            .unwrap()
+            .as_string_array()
+            .unwrap();
+        let dir_indexes = rpm
+            .header_tags
+            .get_value(Tag::DirIndexes)
+            .unwrap()
+            .as_u32_array()
+            .unwrap();
+        let basenames = rpm
+            .header_tags
+            .get_value(Tag::BaseNames)
+            .unwrap()
+            .as_string_array()
+            .unwrap();
+        let filesizes = rpm
+            .header_tags
+            .get_value(Tag::FileSizes)
+            .unwrap()
+            .as_u64_array()
+            .unwrap();
+        let users: Vec<String> = rpm
+            .header_tags
+            .get_value(Tag::FileUserName)
+            .unwrap()
+            .as_string_array()
+            .unwrap();
+        let groups: Vec<String> = rpm
+            .header_tags
+            .get_value(Tag::FileGroupName)
+            .unwrap()
+            .as_string_array()
+            .unwrap();
+        let flags: Vec<u32> = rpm
+            .header_tags
+            .get_value(Tag::FileFlags)
+            .unwrap()
+            .as_u32_array()
+            .unwrap();
+        let mtimes: Vec<u32> = rpm
+            .header_tags
+            .get_value(Tag::FileMTimes)
+            .unwrap()
+            .as_u32_array()
+            .unwrap();
+        let linknames: Vec<String> = rpm
+            .header_tags
+            .get_value(Tag::FileGroupName)
+            .unwrap()
+            .as_string_array()
+            .unwrap();
+        let modes: Vec<u16> = rpm
+            .header_tags
+            .get_value(Tag::FileModes)
+            .unwrap()
+            .as_u16_array()
+            .unwrap();
+        let devices: Vec<u32> = rpm
+            .header_tags
+            .get_value(Tag::FileDevices)
+            .unwrap()
+            .as_u32_array()
+            .unwrap();
+        let inodes: Vec<u32> = rpm
+            .header_tags
+            .get_value(Tag::FileInodes)
+            .unwrap()
+            .as_u32_array()
+            .unwrap();
+        let digests: Vec<String> = rpm
+            .header_tags
+            .get_value(Tag::FileMD5s)
+            .unwrap()
+            .as_string_array()
+            .unwrap();
 
         let files: Vec<FileInfo> = multizip((
             basenames,
@@ -163,32 +233,112 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
         .collect();
 
         let payload = RPMPayload {
-            size: rpm.signature_tags.get(SignatureTag::PayloadSize),
-            format: rpm.header_tags.get(Tag::PayloadFormat),
-            compressor: rpm.header_tags.get(Tag::PayloadCompressor),
-            flags: rpm.header_tags.get(Tag::PayloadFlags),
+            size: rpm
+                .signature_tags
+                .get_value(SignatureTag::PayloadSize)
+                .unwrap()
+                .as_u64()
+                .unwrap(),
+            format: rpm
+                .header_tags
+                .get_value(Tag::PayloadFormat)
+                .unwrap()
+                .as_string()
+                .unwrap(),
+            compressor: rpm
+                .header_tags
+                .get_value(Tag::PayloadCompressor)
+                .unwrap()
+                .as_string()
+                .unwrap(),
+            flags: rpm
+                .header_tags
+                .get_value(Tag::PayloadFlags)
+                .unwrap()
+                .as_string()
+                .unwrap(),
             files,
         };
 
-        let build_int: u32 = rpm.header_tags.get(Tag::BuildTime);
+        let build_int = rpm
+            .header_tags
+            .get_value(Tag::BuildTime)
+            .unwrap()
+            .as_u32()
+            .unwrap();
         let build_time = Local
             .timestamp(i64::from(build_int), 0)
             .format("%c")
             .to_string();
 
         RPMInfo {
-            name: rpm.header_tags.get(Tag::Name),
-            version: rpm.header_tags.get(Tag::Version),
-            release: rpm.header_tags.get(Tag::Release),
-            arch: rpm.header_tags.get(Tag::Arch),
-            group: rpm.header_tags.get(Tag::Group),
-            size: rpm.header_tags.get(Tag::Size),
-            license: rpm.header_tags.get(Tag::License),
-            source_rpm: rpm.header_tags.get(Tag::SourceRpm),
+            name: rpm
+                .header_tags
+                .get_value(Tag::Name)
+                .unwrap()
+                .as_string()
+                .unwrap(),
+            version: rpm
+                .header_tags
+                .get_value(Tag::Version)
+                .unwrap()
+                .as_string()
+                .unwrap(),
+            release: rpm
+                .header_tags
+                .get_value(Tag::Release)
+                .unwrap()
+                .as_string()
+                .unwrap(),
+            arch: rpm
+                .header_tags
+                .get_value(Tag::Arch)
+                .unwrap()
+                .as_string()
+                .unwrap(),
+            group: rpm
+                .header_tags
+                .get_value(Tag::Group)
+                .unwrap()
+                .as_string()
+                .unwrap(),
+            size: rpm
+                .header_tags
+                .get_value(Tag::Size)
+                .unwrap()
+                .as_u64()
+                .unwrap(),
+            license: rpm
+                .header_tags
+                .get_value(Tag::License)
+                .unwrap()
+                .as_string()
+                .unwrap(),
+            source_rpm: rpm
+                .header_tags
+                .get_value(Tag::SourceRpm)
+                .unwrap()
+                .as_string()
+                .unwrap(),
             build_time,
-            build_host: rpm.header_tags.get(Tag::BuildHost),
-            summary: rpm.header_tags.get(Tag::Summary),
-            description: rpm.header_tags.get(Tag::Description),
+            build_host: rpm
+                .header_tags
+                .get_value(Tag::BuildHost)
+                .unwrap()
+                .as_string()
+                .unwrap(),
+            summary: rpm
+                .header_tags
+                .get_value(Tag::Summary)
+                .unwrap()
+                .as_string()
+                .unwrap(),
+            description: rpm
+                .header_tags
+                .get_value(Tag::Description)
+                .unwrap()
+                .as_string()
+                .unwrap(),
             payload,
         }
     }

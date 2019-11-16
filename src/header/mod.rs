@@ -22,6 +22,10 @@ impl<T> Tags<T>
 where
     T: FromPrimitive + Default + Eq + Hash + Copy,
 {
+    pub fn get_value(&self, name: T) -> Option<RType> {
+        self.0.get(&name).cloned()
+    }
+
     pub fn get<O>(&self, name: T) -> O
     where
         O: Default + From<RType>,
@@ -31,6 +35,7 @@ where
             _ => O::default(),
         }
     }
+
     pub fn read<R>(fh: &mut R, indexes: &[Index<T>], size: usize) -> Result<Self, io::Error>
     where
         R: Read + Seek,
@@ -42,7 +47,7 @@ where
         Ok(tags)
     }
 
-    pub fn tags_from_raw(indexes: &[Index<T>], data: &[u8]) -> Self {
+    fn tags_from_raw(indexes: &[Index<T>], data: &[u8]) -> Self {
         let tags = (0..indexes.len())
             .map(|i| {
                 let item = &indexes[i];
