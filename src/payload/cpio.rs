@@ -1,8 +1,9 @@
 use filetime::{set_file_mtime, FileTime};
-use hex::FromHex;
 use std::fs::OpenOptions;
 use std::io::{self, Read, Seek, Write};
 use std::path::PathBuf;
+
+use crate::utils::{align_n_bytes, HexWriter, HexReader};
 
 const MAGIC: &[u8] = b"070701";
 const TRAILER: &str = "TRAILER!!!";
@@ -62,7 +63,7 @@ impl FileEntry {
             })?;
 
         // aligning to 4 bytes: name +
-        let position = align_bytes(name_size + 6, 4);
+        let position = align_n_bytes(name_size + 6, 4);
         reader.seek(io::SeekFrom::Current(position.into()))?;
 
         Ok(FileEntry {
@@ -103,7 +104,7 @@ impl FileEntry {
         writer.write_all(&name)?;
 
         // aligning to 4 bytes
-        let position = align_bytes(entry.name.len() as u32 + 6, 4) as u8;
+        let position = align_n_bytes(entry.name.len() as u32 + 6, 4) as u8;
         let pad = vec![0_u8, position];
         writer.write_all(&pad)?;
 
@@ -163,54 +164,12 @@ fn minor(x: u32) -> u32 {
     (x & 0xFF)
 }
 
-fn align_bytes(from: u32, n: u32) -> u32 {
-    (n - from % n) % n
-}
-
-pub trait HexWriter {
-    fn write_u32_as_hex(&mut self, from: u32) -> Result<(), io::Error>;
-}
-
-impl<W> HexWriter for W
-where
-    W: Write,
-{
-    fn write_u32_as_hex(&mut self, from: u32) -> Result<(), io::Error> {
-        self.write_all(format!("{:x}", from).as_bytes())?;
-        Ok(())
-    }
-}
-
-pub trait HexReader {
-    fn read_hex_as_u32(&mut self) -> Result<u32, io::Error>;
-}
-
-impl<R> HexReader for R
-where
-    R: Read,
-{
-    fn read_hex_as_u32(&mut self) -> Result<u32, io::Error> {
-        let mut raw_bytes = [0_u8; 8];
-        self.read_exact(&mut raw_bytes)?;
-
-        let v = Vec::from_hex(raw_bytes).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Error: can not parse hex {}", e),
-            )
-        })?;
-
-        let bytes = [v[0], v[1], v[2], v[3]];
-        Ok(u32::from_be_bytes(bytes))
-    }
-}
-
 pub fn read_entries<R: Read + Seek>(reader: &mut R) -> Result<Vec<FileEntry>, io::Error> {
     let mut entries = Vec::new();
 
     loop {
         let entry = FileEntry::read(reader)?;
-        let position = align_bytes(entry.file_size, 4) + entry.file_size;
+        let position = align_n_bytes(entry.file_size, 4) + entry.file_size;
         reader.seek(io::SeekFrom::Current(position.into()))?;
         if entry.name == TRAILER {
             break;
@@ -226,7 +185,7 @@ pub fn read_entry<R: Read + Seek, W: Write>(
 ) -> Result<(FileEntry, u64), io::Error> {
     let entry = FileEntry::read(reader)?;
     let number = io_copy_exact(reader, writer, entry.file_size)?;
-    let position = align_bytes(entry.file_size, 4);
+    let position = align_n_bytes(entry.file_size, 4);
     reader.seek(io::SeekFrom::Current(position.into()))?;
     Ok((entry, number.into()))
 }
@@ -257,7 +216,7 @@ pub fn extract_entry<R: Read + Seek>(
             let mut writer = OpenOptions::new().create(true).write(true).open(&path)?;
             number = io_copy_exact(reader, &mut writer, entry.file_size)?;
 
-            let position = align_bytes(entry.file_size, 4);
+            let position = align_n_bytes(entry.file_size, 4);
             reader.seek(io::SeekFrom::Current(position.into()))?;
         }
 
@@ -375,7 +334,7 @@ impl<T: Read + Seek> Iterator for CpioEntries<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let entry = FileEntry::read(&mut self.reader).unwrap();
-        let position = align_bytes(entry.file_size, 4) + entry.file_size;
+        let position = align_n_bytes(entry.file_size, 4) + entry.file_size;
         self.reader
             .seek(io::SeekFrom::Current(position.into()))
             .unwrap();
