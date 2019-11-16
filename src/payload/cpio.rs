@@ -1,5 +1,6 @@
 use filetime::{set_file_mtime, FileTime};
-use std::fs::OpenOptions;
+use std::convert::{TryFrom, TryInto};
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, Write};
 use std::path::PathBuf;
 
@@ -81,45 +82,34 @@ impl FileEntry {
             rdev_minor,
         })
     }
-
-    pub fn write<W: Write>(writer: &mut W, entry: FileEntry) -> Result<(), io::Error> {
-        writer.write_all(MAGIC)?;
-        writer.write_u32_as_hex(entry.ino)?;
-        writer.write_u32_as_hex(entry.ino)?;
-        writer.write_u32_as_hex(entry.mode)?;
-        writer.write_u32_as_hex(entry.uid)?;
-        writer.write_u32_as_hex(entry.gid)?;
-        writer.write_u32_as_hex(entry.nlink)?;
-        writer.write_u32_as_hex(entry.mtime)?;
-        writer.write_u32_as_hex(entry.file_size)?;
-        writer.write_u32_as_hex(entry.dev_major)?;
-        writer.write_u32_as_hex(entry.dev_minor)?;
-        writer.write_u32_as_hex(entry.rdev_major)?;
-        writer.write_u32_as_hex(entry.rdev_minor)?;
-        writer.write_u32_as_hex(entry.name.len() as u32)?;
-        writer.write_all(&[0_u8; 8])?;
-
-        let mut name = entry.name.as_bytes().to_vec();
-        name.push(0_u8);
-        writer.write_all(&name)?;
-
-        // aligning to 4 bytes
-        let position = align_n_bytes(entry.name.len() as u32 + 6, 4) as u8;
-        let pad = vec![0_u8, position];
-        writer.write_all(&pad)?;
-
-        Ok(())
-    }
 }
 
-impl From<&PathBuf> for FileEntry {
-    fn from(f: &PathBuf) -> Self {
-        let meta = f.metadata().unwrap();
-        let name = f.file_name().unwrap().to_str().unwrap().to_owned();
+impl TryFrom<&PathBuf> for FileEntry {
+    type Error = io::Error;
+
+    fn try_from(f: &PathBuf) -> Result<Self, Self::Error> {
+        let meta = f.metadata()?;
+        let name = f
+            .file_name()
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("cannot find filename from path {:?}", f),
+                )
+            })?
+            .to_str()
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("cannot parse path {:?} to string", f),
+                )
+            })?
+            .to_owned();
+
         #[cfg(all(unix))]
         {
             use std::os::unix::fs::MetadataExt;
-            FileEntry {
+            Ok(FileEntry {
                 name,
                 ino: meta.ino() as u32,
                 mode: meta.mode(),
@@ -132,13 +122,13 @@ impl From<&PathBuf> for FileEntry {
                 dev_minor: minor(meta.dev() as u32),
                 rdev_major: major(meta.rdev() as u32),
                 rdev_minor: minor(meta.rdev() as u32),
-            }
+            })
         }
         #[cfg(all(windows))]
         {
             // TODO: reimplement properly for Windows
             use std::os::windows::fs::MetadataExt;
-            FileEntry {
+            Ok(FileEntry {
                 name,
                 ino: 1,
                 mode: meta.file_attributes() as u32,
@@ -151,7 +141,7 @@ impl From<&PathBuf> for FileEntry {
                 dev_minor: 0,
                 rdev_major: 0,
                 rdev_minor: 0,
-            }
+            })
         }
     }
 }
@@ -347,18 +337,54 @@ impl<T: Read + Seek> Iterator for CpioEntries<T> {
     }
 }
 
-struct CpioWrite<T> {
-    writer: T,
-}
+pub trait CpioWriter {
+    fn write_cpio_entry(&mut self, entry: FileEntry) -> Result<(), io::Error>;
 
-impl<T: Read + Seek> CpioWrite<T> {
-    pub fn new(writer: T) -> Self {
-        CpioWrite { writer }
+    fn write_cpio_record(&mut self, path: &PathBuf) -> Result<(), io::Error> {
+        let entry: FileEntry = path.try_into()?;
+        self.write_cpio_entry(entry)?;
+        let mut file = File::open(path)?;
+        self.write_cpio_entry_payload(&mut file)
     }
 
-    pub fn write(file: &PathBuf) -> Result<(), io::Error> {
-        let entry: FileEntry = file.into();
+    fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> Result<(), io::Error>;
+}
 
+impl<W> CpioWriter for W
+where
+    W: Write,
+{
+    fn write_cpio_entry(&mut self, entry: FileEntry) -> Result<(), io::Error> {
+        self.write_all(MAGIC)?;
+        self.write_u32_as_hex(entry.ino)?;
+        self.write_u32_as_hex(entry.ino)?;
+        self.write_u32_as_hex(entry.mode)?;
+        self.write_u32_as_hex(entry.uid)?;
+        self.write_u32_as_hex(entry.gid)?;
+        self.write_u32_as_hex(entry.nlink)?;
+        self.write_u32_as_hex(entry.mtime)?;
+        self.write_u32_as_hex(entry.file_size)?;
+        self.write_u32_as_hex(entry.dev_major)?;
+        self.write_u32_as_hex(entry.dev_minor)?;
+        self.write_u32_as_hex(entry.rdev_major)?;
+        self.write_u32_as_hex(entry.rdev_minor)?;
+        self.write_u32_as_hex(entry.name.len() as u32)?;
+        self.write_all(&[0_u8; 8])?;
+
+        let mut name = entry.name.as_bytes().to_vec();
+        name.push(0_u8);
+        self.write_all(&name)?;
+
+        // aligning to 4 bytes
+        let position = align_n_bytes(entry.name.len() as u32 + 6, 4) as u8;
+        let pad = vec![0_u8, position];
+        self.write_all(&pad)?;
+
+        Ok(())
+    }
+
+    fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> Result<(), io::Error> {
+        io::copy(reader, self)?;
         Ok(())
     }
 }
