@@ -9,7 +9,7 @@ use crate::utils::{align_n_bytes, HexReader, HexWriter};
 const MAGIC: &[u8] = b"070701";
 const TRAILER: &str = "TRAILER!!!";
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FileEntry {
     pub name: String,
     pub ino: u32,
@@ -81,6 +81,25 @@ impl FileEntry {
             rdev_major,
             rdev_minor,
         })
+    }
+}
+
+impl Default for FileEntry {
+    fn default() -> Self {
+        FileEntry {
+            name: TRAILER.to_owned(),
+            ino: 0,
+            mode: 0,
+            uid: 0,
+            gid: 0,
+            nlink: 1,
+            mtime: 0,
+            file_size: 0,
+            dev_major: 0,
+            dev_minor: 0,
+            rdev_major: 0,
+            rdev_minor: 0,
+        }
     }
 }
 
@@ -252,7 +271,6 @@ pub fn extract_entries<R: Read + Seek>(
     loop {
         let (entry, _) = extract_entry(reader, dir, creates_dir, change_owner)?;
         if entry.name == TRAILER {
-            println!("Extracting {}", &entry.name);
             break;
         }
         entries.push(entry);
