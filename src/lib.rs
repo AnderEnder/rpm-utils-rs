@@ -1,6 +1,7 @@
 pub mod header;
 pub mod lead;
 pub mod payload;
+mod utils;
 
 use bzip2::read::BzDecoder;
 use chrono::{Local, TimeZone};
@@ -16,6 +17,7 @@ use zstd::stream::read::Decoder;
 use header::{HeaderLead, IndexArray, SignatureTag, Tag, Tags};
 use lead::Lead;
 use payload::{FileInfo, RPMPayload};
+use utils::align_n_bytes;
 
 #[derive(Debug)]
 pub struct RPMFile<T> {
@@ -37,7 +39,7 @@ impl RPMFile<File> {
             Tags::read(&mut file, &signature_indexes, signature_lead.hsize as usize)?;
 
         // aligning to 8 bytes
-        let pos = align_8_bytes(signature_lead.hsize);
+        let pos = align_n_bytes(signature_lead.hsize, 8);
 
         file.seek(io::SeekFrom::Current(pos.into()))?;
 
@@ -82,10 +84,6 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
             )),
         }
     }
-}
-
-fn align_8_bytes(from: u32) -> u32 {
-    (8 - from % 8) % 8
 }
 
 #[derive(Debug)]
@@ -341,18 +339,5 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
                 .unwrap(),
             payload,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_allign() {
-        assert_eq!(align_8_bytes(32), 0);
-        assert_eq!(align_8_bytes(33), 7);
-        assert_eq!(align_8_bytes(34), 6);
-        assert_eq!(align_8_bytes(35), 5);
-        assert_eq!(align_8_bytes(39), 1);
     }
 }

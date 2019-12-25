@@ -4,6 +4,8 @@ use std::fmt;
 use std::io::{self, Read, Seek};
 use strum_macros::Display;
 
+use crate::utils::parse_string;
+
 pub const MAGIC: [u8; 4] = [237, 171, 238, 219];
 
 #[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display)]
@@ -130,10 +132,4 @@ impl Default for Lead {
             reserved: [0; 16],
         }
     }
-}
-
-fn parse_string(bytes: &[u8]) -> String {
-    let position = bytes.iter().position(|&x| x == 0).unwrap_or(0);
-    let bytes2 = &bytes[0..position];
-    String::from_utf8_lossy(bytes2).to_string()
 }

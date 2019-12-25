@@ -13,6 +13,8 @@ use std::hash::Hash;
 use std::io::{self, Read, Seek};
 use std::mem::size_of;
 
+use crate::utils::{parse_string, parse_strings};
+
 #[derive(Debug, Default)]
 pub struct Tags<T>(pub HashMap<T, RType>)
 where
@@ -91,20 +93,6 @@ where
             .collect();
         Tags(tags)
     }
-}
-
-fn parse_string(bytes: &[u8]) -> String {
-    let position = bytes.iter().position(|&x| x == 0).unwrap_or(0);
-    let bytes2 = &bytes[0..position];
-    String::from_utf8_lossy(bytes2).to_string()
-}
-
-fn parse_strings(bytes: &[u8], count: usize) -> Vec<String> {
-    bytes
-        .split(|x| *x == 0)
-        .take(count)
-        .map(|b| String::from_utf8_lossy(b).to_string())
-        .collect()
 }
 
 fn extract<T: FromBytes>(
