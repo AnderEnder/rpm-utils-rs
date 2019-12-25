@@ -358,14 +358,44 @@ impl<T: Read + Seek> Iterator for CpioEntries<T> {
 pub trait CpioWriter {
     fn write_cpio_entry(&mut self, entry: FileEntry) -> Result<(), io::Error>;
 
-    fn write_cpio_record(&mut self, path: &PathBuf) -> Result<(), io::Error> {
+    fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> Result<(), io::Error>;
+
+    fn write_cpio_file(&mut self, path: &PathBuf) -> Result<(), io::Error> {
         let entry: FileEntry = path.try_into()?;
         self.write_cpio_entry(entry)?;
         let mut file = File::open(path)?;
         self.write_cpio_entry_payload(&mut file)
     }
 
-    fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> Result<(), io::Error>;
+    fn write_cpio_files(&mut self, paths: Vec<&PathBuf>) -> Result<(), io::Error> {
+        for path in &paths {
+            self.write_cpio_file(path)?
+        }
+        self.cpio_close()
+    }
+
+    fn write_cpio_record<R: Read>(
+        &mut self,
+        record: FileEntry,
+        data: &mut R,
+    ) -> Result<(), io::Error> {
+        self.write_cpio_entry(record)?;
+        self.write_cpio_entry_payload(data)
+    }
+
+    fn write_cpio_records<R: Read>(
+        &mut self,
+        records: Vec<(FileEntry, &mut R)>,
+    ) -> Result<(), io::Error> {
+        for (record, data) in records.into_iter() {
+            self.write_cpio_record(record, data)?;
+        }
+        self.cpio_close()
+    }
+
+    fn cpio_close(&mut self) -> Result<(), io::Error> {
+        self.write_cpio_entry(FileEntry::default())
+    }
 }
 
 impl<W> CpioWriter for W
