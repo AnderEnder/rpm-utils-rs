@@ -367,7 +367,7 @@ pub trait CpioWriter {
         self.write_cpio_entry_payload(&mut file)
     }
 
-    fn write_cpio_files(&mut self, paths: Vec<&PathBuf>) -> Result<(), io::Error> {
+    fn write_cpio_files(&mut self, paths: Vec<PathBuf>) -> Result<(), io::Error> {
         for path in &paths {
             self.write_cpio_file(path)?
         }
@@ -434,5 +434,48 @@ where
     fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> Result<(), io::Error> {
         io::copy(reader, self)?;
         Ok(())
+    }
+}
+
+struct CpioBuilder<W: Write> {
+    writer: Option<W>,
+    records: Vec<PathBuf>,
+}
+
+impl<W: Write + CpioWriter> CpioBuilder<W> {
+    pub fn new(writer: W) -> Self {
+        CpioBuilder {
+            writer: Some(writer),
+            records: Vec::new(),
+        }
+    }
+
+    pub fn add_file(mut self, path: &str) -> Result<Self, io::Error> {
+        let file = PathBuf::from(path);
+        self.records.push(file);
+        Ok(self)
+    }
+
+    pub fn build(self) -> Result<(), io::Error> {
+        match self {
+            CpioBuilder {
+                writer: Some(mut writer),
+                records,
+            } => {
+                writer.write_cpio_files(records)?;
+                writer.cpio_close()
+            }
+            _ => Err(io::Error::new(io::ErrorKind::Other, "Writer not found")),
+        }
+    }
+}
+
+impl CpioBuilder<File> {
+    pub fn open(path: &str) -> Result<Self, io::Error> {
+        let writer = OpenOptions::new().create(true).write(true).open(&path)?;
+        Ok(CpioBuilder {
+            writer: Some(writer),
+            records: Vec::new(),
+        })
     }
 }
