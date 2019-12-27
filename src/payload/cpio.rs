@@ -2,7 +2,7 @@ use filetime::{set_file_mtime, FileTime};
 use std::convert::{TryFrom, TryInto};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::utils::{align_n_bytes, HexReader, HexWriter};
 
@@ -55,8 +55,9 @@ impl FileEntry {
         // optimise later
         let mut name_bytes = vec![0_u8; name_size as usize];
         reader.read_exact(&mut name_bytes)?;
+        let size = (name_size - 1) as usize;
         let name =
-            String::from_utf8(name_bytes[0..(name_size - 1) as usize].to_vec()).map_err(|e| {
+            String::from_utf8(name_bytes[0..size].to_vec()).map_err(|e| {
                 io::Error::new(
                     io::ErrorKind::Other,
                     format!("Error: incorrect utf8 symbol: {}", e),
@@ -437,7 +438,7 @@ where
     }
 }
 
-struct CpioBuilder<W: Write> {
+pub struct CpioBuilder<W: Write> {
     writer: Option<W>,
     records: Vec<(FileEntry, Box<dyn Read>)>,
 }
@@ -450,10 +451,9 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
         }
     }
 
-    pub fn add_raw_file(mut self, path: &str) -> Result<Self, io::Error> {
-        let file = PathBuf::from(path);
-        let record: FileEntry = (&file).try_into()?;
-        let reader = File::open(&file)?;
+    pub fn add_raw_file(mut self, path: &PathBuf) -> Result<Self, io::Error> {
+        let record: FileEntry = path.try_into()?;
+        let reader = File::open(path)?;
         self.records.push((record, Box::new(reader)));
         Ok(self)
     }
@@ -484,8 +484,8 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
 }
 
 impl CpioBuilder<File> {
-    pub fn open(path: &str) -> Result<Self, io::Error> {
-        let writer = OpenOptions::new().create(true).write(true).open(&path)?;
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
+        let writer = OpenOptions::new().create(true).write(true).open(path)?;
         Ok(CpioBuilder {
             writer: Some(writer),
             records: Vec::new(),
