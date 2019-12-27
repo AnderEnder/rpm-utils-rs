@@ -439,7 +439,7 @@ where
 
 struct CpioBuilder<W: Write> {
     writer: Option<W>,
-    records: Vec<PathBuf>,
+    records: Vec<(FileEntry, Box<dyn Read>)>,
 }
 
 impl<W: Write + CpioWriter> CpioBuilder<W> {
@@ -450,9 +450,20 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
         }
     }
 
-    pub fn add_file(mut self, path: &str) -> Result<Self, io::Error> {
+    pub fn add_raw_file(mut self, path: &str) -> Result<Self, io::Error> {
         let file = PathBuf::from(path);
-        self.records.push(file);
+        let record: FileEntry = (&file).try_into()?;
+        let reader = File::open(&file)?;
+        self.records.push((record, Box::new(reader)));
+        Ok(self)
+    }
+
+    pub fn add_file(mut self, path: &str, as_path: &str) -> Result<Self, io::Error> {
+        let file = PathBuf::from(path);
+        let mut record: FileEntry = (&file).try_into()?;
+        record.name = as_path.to_owned();
+        let reader = File::open(&file)?;
+        self.records.push((record, Box::new(reader)));
         Ok(self)
     }
 
@@ -462,7 +473,9 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
                 writer: Some(mut writer),
                 records,
             } => {
-                writer.write_cpio_files(records)?;
+                for (record, mut data) in records.into_iter() {
+                    writer.write_cpio_record(record, &mut data)?;
+                }
                 writer.cpio_close()
             }
             _ => Err(io::Error::new(io::ErrorKind::Other, "Writer not found")),
