@@ -55,14 +55,17 @@ impl FileEntry {
         // optimise later
         let mut name_bytes = vec![0_u8; name_size as usize];
         reader.read_exact(&mut name_bytes)?;
-        let size = (name_size - 1) as usize;
-        let name =
+        let name = if name_size > 0 {
+            let size = (name_size - 1) as usize;
             String::from_utf8(name_bytes[0..size].to_vec()).map_err(|e| {
                 io::Error::new(
                     io::ErrorKind::Other,
                     format!("Error: incorrect utf8 symbol: {}", e),
                 )
-            })?;
+            })?
+        } else {
+            return Err(io::Error::new(io::ErrorKind::Other, "incorrect cpio name"));
+        };
 
         // aligning to 4 bytes: name +
         let position = align_n_bytes(name_size + 6, 4);
