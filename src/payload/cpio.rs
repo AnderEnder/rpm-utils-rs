@@ -2,7 +2,7 @@ use filetime::{set_file_mtime, FileTime};
 use std::convert::{TryFrom, TryInto};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::utils::{align_n_bytes, HexReader, HexWriter};
 
@@ -55,13 +55,17 @@ impl FileEntry {
         // optimise later
         let mut name_bytes = vec![0_u8; name_size as usize];
         reader.read_exact(&mut name_bytes)?;
-        let name =
-            String::from_utf8(name_bytes[0..(name_size - 1) as usize].to_vec()).map_err(|e| {
+        let name = if name_size > 0 {
+            let size = (name_size - 1) as usize;
+            String::from_utf8(name_bytes[0..size].to_vec()).map_err(|e| {
                 io::Error::new(
                     io::ErrorKind::Other,
                     format!("Error: incorrect utf8 symbol: {}", e),
                 )
-            })?;
+            })?
+        } else {
+            return Err(io::Error::new(io::ErrorKind::Other, "incorrect cpio name"));
+        };
 
         // aligning to 4 bytes: name +
         let position = align_n_bytes(name_size + 6, 4);
@@ -367,7 +371,7 @@ pub trait CpioWriter {
         self.write_cpio_entry_payload(&mut file)
     }
 
-    fn write_cpio_files(&mut self, paths: Vec<&PathBuf>) -> Result<(), io::Error> {
+    fn write_cpio_files(&mut self, paths: Vec<PathBuf>) -> Result<(), io::Error> {
         for path in &paths {
             self.write_cpio_file(path)?
         }
@@ -405,7 +409,6 @@ where
     fn write_cpio_entry(&mut self, entry: FileEntry) -> Result<(), io::Error> {
         self.write_all(MAGIC)?;
         self.write_u32_as_hex(entry.ino)?;
-        self.write_u32_as_hex(entry.ino)?;
         self.write_u32_as_hex(entry.mode)?;
         self.write_u32_as_hex(entry.uid)?;
         self.write_u32_as_hex(entry.gid)?;
@@ -416,23 +419,80 @@ where
         self.write_u32_as_hex(entry.dev_minor)?;
         self.write_u32_as_hex(entry.rdev_major)?;
         self.write_u32_as_hex(entry.rdev_minor)?;
-        self.write_u32_as_hex(entry.name.len() as u32)?;
-        self.write_all(&[0_u8; 8])?;
+        let name_size = (entry.name.len() + 1) as u32;
+        self.write_u32_as_hex(name_size)?;
+        let checksum = [0_u8; 8];
+        self.write_all(&checksum)?;
 
         let mut name = entry.name.as_bytes().to_vec();
         name.push(0_u8);
         self.write_all(&name)?;
 
         // aligning to 4 bytes
-        let position = align_n_bytes(entry.name.len() as u32 + 6, 4) as u8;
-        let pad = vec![0_u8, position];
-        self.write_all(&pad)?;
-
-        Ok(())
+        let number = align_n_bytes(name_size + 6, 4) as usize;
+        let pad = vec![0_u8; number];
+        self.write_all(&pad)
     }
 
     fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> Result<(), io::Error> {
-        io::copy(reader, self)?;
-        Ok(())
+        let file_size = io::copy(reader, self)? as u32;
+        let number = align_n_bytes(file_size, 4) as usize;
+        let pad = vec![0_u8; number];
+        self.write_all(&pad)
+    }
+}
+
+pub struct CpioBuilder<W: Write> {
+    writer: Option<W>,
+    records: Vec<(FileEntry, Box<dyn Read>)>,
+}
+
+impl<W: Write + CpioWriter> CpioBuilder<W> {
+    pub fn new(writer: W) -> Self {
+        CpioBuilder {
+            writer: Some(writer),
+            records: Vec::new(),
+        }
+    }
+
+    pub fn add_raw_file(mut self, path: &PathBuf) -> Result<Self, io::Error> {
+        let record: FileEntry = path.try_into()?;
+        let reader = File::open(path)?;
+        self.records.push((record, Box::new(reader)));
+        Ok(self)
+    }
+
+    pub fn add_file(mut self, path: &str, as_path: &str) -> Result<Self, io::Error> {
+        let file = PathBuf::from(path);
+        let mut record: FileEntry = (&file).try_into()?;
+        record.name = as_path.to_owned();
+        let reader = File::open(&file)?;
+        self.records.push((record, Box::new(reader)));
+        Ok(self)
+    }
+
+    pub fn build(self) -> Result<(), io::Error> {
+        match self {
+            CpioBuilder {
+                writer: Some(mut writer),
+                records,
+            } => {
+                for (record, mut data) in records.into_iter() {
+                    writer.write_cpio_record(record, &mut data)?;
+                }
+                writer.cpio_close()
+            }
+            _ => Err(io::Error::new(io::ErrorKind::Other, "Writer not found")),
+        }
+    }
+}
+
+impl CpioBuilder<File> {
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
+        let writer = OpenOptions::new().create(true).write(true).open(path)?;
+        Ok(CpioBuilder {
+            writer: Some(writer),
+            records: Vec::new(),
+        })
     }
 }
