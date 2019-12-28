@@ -409,7 +409,6 @@ where
     fn write_cpio_entry(&mut self, entry: FileEntry) -> Result<(), io::Error> {
         self.write_all(MAGIC)?;
         self.write_u32_as_hex(entry.ino)?;
-        self.write_u32_as_hex(entry.ino)?;
         self.write_u32_as_hex(entry.mode)?;
         self.write_u32_as_hex(entry.uid)?;
         self.write_u32_as_hex(entry.gid)?;
