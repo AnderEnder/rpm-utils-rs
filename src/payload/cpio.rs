@@ -419,24 +419,26 @@ where
         self.write_u32_as_hex(entry.dev_minor)?;
         self.write_u32_as_hex(entry.rdev_major)?;
         self.write_u32_as_hex(entry.rdev_minor)?;
-        self.write_u32_as_hex(entry.name.len() as u32)?;
-        self.write_all(&[0_u8; 8])?;
+        let name_size = (entry.name.len() + 1) as u32;
+        self.write_u32_as_hex(name_size)?;
+        let checksum = [0_u8; 8];
+        self.write_all(&checksum)?;
 
         let mut name = entry.name.as_bytes().to_vec();
         name.push(0_u8);
         self.write_all(&name)?;
 
         // aligning to 4 bytes
-        let position = align_n_bytes(entry.name.len() as u32 + 6, 4) as u8;
-        let pad = vec![0_u8, position];
-        self.write_all(&pad)?;
-
-        Ok(())
+        let number = align_n_bytes(name_size + 6, 4) as usize;
+        let pad = vec![0_u8; number];
+        self.write_all(&pad)
     }
 
     fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> Result<(), io::Error> {
-        io::copy(reader, self)?;
-        Ok(())
+        let file_size = io::copy(reader, self)? as u32;
+        let number = align_n_bytes(file_size, 4) as usize;
+        let pad = vec![0_u8; number];
+        self.write_all(&pad)
     }
 }
 
