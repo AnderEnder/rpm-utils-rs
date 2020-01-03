@@ -1,5 +1,4 @@
 use rpm_utils::payload::CpioBuilder;
-use std::fs::File;
 use std::io;
 use std::path::PathBuf;
 use std::process::exit;
