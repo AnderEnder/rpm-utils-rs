@@ -60,20 +60,22 @@ impl RPMFile<File> {
 
 impl<T: 'static + Read + Seek> RPMFile<T> {
     pub fn copy_payload(self, path: &Path) -> Result<u64, io::Error> {
-        let compressor: String = self
-            .header_tags
-            .get_value(Tag::PayloadCompressor)
-            .unwrap()
-            .as_string()
-            .unwrap();
         let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
-        let mut reader = self.into_uncompress_reader(&compressor)?;
+        let mut reader = self.into_uncompress_reader()?;
         io::copy(&mut reader, &mut writer)
     }
 
-    fn into_uncompress_reader(mut self, compressor: &str) -> Result<Box<dyn Read>, io::Error> {
+    fn into_uncompress_reader(mut self) -> Result<Box<dyn Read>, io::Error> {
         self.file.seek(SeekFrom::Start(self.payload_offset))?;
-        match compressor {
+
+        let compressor: String = self
+            .header_tags
+            .get_value(Tag::PayloadCompressor)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Compression is not defined"))?
+            .as_string()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Compression is not defined"))?;
+
+        match compressor.as_str() {
             "gzip" => Ok(Box::new(GzDecoder::new(self.file))),
             "bzip2" => Ok(Box::new(BzDecoder::new(self.file))),
             "zstd" => Ok(Box::new(Decoder::new(self.file)?)),
