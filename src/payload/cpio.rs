@@ -9,7 +9,7 @@ use crate::utils::{align_n_bytes, HexReader, HexWriter};
 const MAGIC: &[u8] = b"070701";
 const TRAILER: &str = "TRAILER!!!";
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct FileEntry {
     pub name: String,
     pub ino: u32,
@@ -26,7 +26,7 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
-    pub fn read<R: Read + Seek>(reader: &mut R) -> Result<Self, io::Error> {
+    pub fn read<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let mut magic = [0_u8; 6];
         reader.read_exact(&mut magic)?;
 
@@ -69,7 +69,8 @@ impl FileEntry {
 
         // aligning to 4 bytes: name +
         let position = align_n_bytes(name_size + 6, 4);
-        reader.seek(io::SeekFrom::Current(position.into()))?;
+        let mut tmp_bytes = vec![0_u8; position as usize];
+        reader.read_exact(&mut tmp_bytes)?;
 
         Ok(FileEntry {
             name,
@@ -494,5 +495,18 @@ impl CpioBuilder<File> {
             writer: Some(writer),
             records: Vec::new(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_cpio_write_entry() -> Result<(), io::Error> {
+        let mut writer = Vec::new();
+        writer.write_cpio_entry(FileEntry::default())?;
+        let entry = FileEntry::read(&mut writer.as_slice())?;
+        assert_eq!(entry, FileEntry::default());
+        Ok(())
     }
 }
