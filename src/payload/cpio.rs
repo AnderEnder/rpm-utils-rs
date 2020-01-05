@@ -87,6 +87,34 @@ impl FileEntry {
             rdev_minor,
         })
     }
+
+    fn write<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        writer.write_all(MAGIC)?;
+        writer.write_u32_as_hex(self.ino)?;
+        writer.write_u32_as_hex(self.mode)?;
+        writer.write_u32_as_hex(self.uid)?;
+        writer.write_u32_as_hex(self.gid)?;
+        writer.write_u32_as_hex(self.nlink)?;
+        writer.write_u32_as_hex(self.mtime)?;
+        writer.write_u32_as_hex(self.file_size)?;
+        writer.write_u32_as_hex(self.dev_major)?;
+        writer.write_u32_as_hex(self.dev_minor)?;
+        writer.write_u32_as_hex(self.rdev_major)?;
+        writer.write_u32_as_hex(self.rdev_minor)?;
+        let name_size = (self.name.len() + 1) as u32;
+        writer.write_u32_as_hex(name_size)?;
+        let checksum = [0_u8; 8];
+        writer.write_all(&checksum)?;
+
+        let mut name = self.name.as_bytes().to_vec();
+        name.push(0_u8);
+        writer.write_all(&name)?;
+
+        // aligning to 4 bytes
+        let number = align_n_bytes(name_size + 6, 4) as usize;
+        let pad = vec![0_u8; number];
+        writer.write_all(&pad)
+    }
 }
 
 impl Default for FileEntry {
@@ -360,6 +388,36 @@ impl<T: Read + Seek> Iterator for CpioEntries<T> {
     }
 }
 
+pub trait CpioRead {
+    fn read_cpio_entry(&mut self) -> Result<FileEntry, io::Error>;
+    fn read_cpio_entry_payload<W: Write>(
+        &mut self,
+        entry: &FileEntry,
+        write: &mut W,
+    ) -> Result<(), io::Error>;
+}
+
+impl<R> CpioRead for R
+where
+    R: Read + Seek,
+{
+    fn read_cpio_entry(&mut self) -> Result<FileEntry, io::Error> {
+        FileEntry::read(self)
+    }
+
+    fn read_cpio_entry_payload<W: Write>(
+        &mut self,
+        entry: &FileEntry,
+        writer: &mut W,
+    ) -> Result<(), io::Error> {
+        let file_size = entry.file_size;
+        io_copy_exact(self, writer, file_size)?;
+        let position = align_n_bytes(entry.file_size, 4) + entry.file_size;
+        self.seek(io::SeekFrom::Current(position.into()))?;
+        Ok(())
+    }
+}
+
 pub trait CpioWriter {
     fn write_cpio_entry(&mut self, entry: FileEntry) -> Result<(), io::Error>;
 
@@ -408,31 +466,7 @@ where
     W: Write,
 {
     fn write_cpio_entry(&mut self, entry: FileEntry) -> Result<(), io::Error> {
-        self.write_all(MAGIC)?;
-        self.write_u32_as_hex(entry.ino)?;
-        self.write_u32_as_hex(entry.mode)?;
-        self.write_u32_as_hex(entry.uid)?;
-        self.write_u32_as_hex(entry.gid)?;
-        self.write_u32_as_hex(entry.nlink)?;
-        self.write_u32_as_hex(entry.mtime)?;
-        self.write_u32_as_hex(entry.file_size)?;
-        self.write_u32_as_hex(entry.dev_major)?;
-        self.write_u32_as_hex(entry.dev_minor)?;
-        self.write_u32_as_hex(entry.rdev_major)?;
-        self.write_u32_as_hex(entry.rdev_minor)?;
-        let name_size = (entry.name.len() + 1) as u32;
-        self.write_u32_as_hex(name_size)?;
-        let checksum = [0_u8; 8];
-        self.write_all(&checksum)?;
-
-        let mut name = entry.name.as_bytes().to_vec();
-        name.push(0_u8);
-        self.write_all(&name)?;
-
-        // aligning to 4 bytes
-        let number = align_n_bytes(name_size + 6, 4) as usize;
-        let pad = vec![0_u8; number];
-        self.write_all(&pad)
+        entry.write(self)
     }
 
     fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> Result<(), io::Error> {
