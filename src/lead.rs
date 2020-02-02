@@ -1,5 +1,6 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
+use omnom::prelude::*;
 use std::fmt;
 use std::io::{self, Read, Seek};
 use strum_macros::Display;
@@ -27,7 +28,7 @@ pub struct Lead {
 }
 
 impl Lead {
-    pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
+    pub fn read<R: Read + Seek>(fh: &mut R) -> io::Result<Self> {
         fh.seek(io::SeekFrom::Start(0))?;
         let mut magic = [0_u8; 4];
         fh.read_exact(&mut magic)?;
@@ -56,23 +57,17 @@ impl Lead {
             }
         }
 
-        let mut rpm_type_be = [0_u8; 2];
-        fh.read_exact(&mut rpm_type_be)?;
-        let rpm_type = Type::from_u16(u16::from_be_bytes(rpm_type_be)).ok_or_else(|| {
+        let rpm_type_id: u16 = fh.read_be()?;
+        let rpm_type = Type::from_u16(rpm_type_id).ok_or_else(|| {
             io::Error::new(io::ErrorKind::Other, "Error: can not read the rpm type")
         })?;
-        let mut archnum_be = [0_u8; 2];
-        fh.read_exact(&mut archnum_be)?;
-        let archnum = u16::from_be_bytes(archnum_be);
+        let archnum: u16 = fh.read_be()?;
 
         let mut name = [0_u8; 66];
         fh.read_exact(&mut name)?;
-        let mut osnum_be = [0_u8; 2];
-        fh.read_exact(&mut osnum_be)?;
-        let osnum = u16::from_be_bytes(osnum_be);
-        let signature_type_be = [0_u8; 2];
-        fh.read_exact(&mut osnum_be)?;
-        let signature_type = u16::from_be_bytes(signature_type_be);
+        let osnum: u16 = fh.read_be()?;
+        let signature_type: u16 = fh.read_be()?;
+
         let mut reserved = [0_u8; 16];
         fh.read_exact(&mut reserved)?;
 

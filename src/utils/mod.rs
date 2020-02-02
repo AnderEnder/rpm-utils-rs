@@ -1,4 +1,5 @@
 use hex::FromHex;
+use omnom::prelude::*;
 use std::io;
 use std::io::{Read, Write};
 
@@ -21,40 +22,40 @@ pub fn parse_strings(bytes: &[u8], count: usize) -> Vec<String> {
 }
 
 pub trait HexWriter {
-    fn write_u32_as_hex(&mut self, from: u32) -> Result<(), io::Error>;
+    fn write_u32_as_hex(&mut self, from: u32) -> io::Result<()>;
 }
 
 impl<W> HexWriter for W
 where
     W: Write,
 {
-    fn write_u32_as_hex(&mut self, from: u32) -> Result<(), io::Error> {
+    fn write_u32_as_hex(&mut self, from: u32) -> io::Result<()> {
         self.write_all(format!("{:08x}", from).as_bytes())?;
         Ok(())
     }
 }
 
 pub trait HexReader {
-    fn read_hex_as_u32(&mut self) -> Result<u32, io::Error>;
+    fn read_hex_as_u32(&mut self) -> io::Result<u32>;
 }
 
 impl<R> HexReader for R
 where
     R: Read,
 {
-    fn read_hex_as_u32(&mut self) -> Result<u32, io::Error> {
+    fn read_hex_as_u32(&mut self) -> io::Result<u32> {
         let mut raw_bytes = [0_u8; 8];
         self.read_exact(&mut raw_bytes)?;
 
-        let v = Vec::from_hex(raw_bytes).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Error: can not parse hex {}", e),
-            )
-        })?;
-
-        let bytes = [v[0], v[1], v[2], v[3]];
-        Ok(u32::from_be_bytes(bytes))
+        Vec::from_hex(raw_bytes)
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Error: can not parse hex {}", e),
+                )
+            })?
+            .as_slice()
+            .read_be()
     }
 }
 

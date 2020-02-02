@@ -21,7 +21,7 @@ struct Args {
     target_dir: PathBuf,
 }
 
-fn run(args: Args) -> Result<(), io::Error> {
+fn run(args: Args) -> io::Result<()> {
     let mut file = File::open(&args.path)?;
     if args.debug {
         let entries = payload::read_entries(&mut file)?;

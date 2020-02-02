@@ -28,7 +28,7 @@ pub struct RPMFile<T> {
 }
 
 impl RPMFile<File> {
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
+    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let mut file = OpenOptions::new().read(true).open(path)?;
 
         let _lead = Lead::read(&mut file)?;
@@ -59,13 +59,13 @@ impl RPMFile<File> {
 }
 
 impl<T: 'static + Read + Seek> RPMFile<T> {
-    pub fn copy_payload(self, path: &Path) -> Result<u64, io::Error> {
+    pub fn copy_payload(self, path: &Path) -> io::Result<u64> {
         let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
         let mut reader = self.into_uncompress_reader()?;
         io::copy(&mut reader, &mut writer)
     }
 
-    fn into_uncompress_reader(mut self) -> Result<Box<dyn Read>, io::Error> {
+    fn into_uncompress_reader(mut self) -> io::Result<Box<dyn Read>> {
         self.file.seek(SeekFrom::Start(self.payload_offset))?;
 
         let compressor: String = self

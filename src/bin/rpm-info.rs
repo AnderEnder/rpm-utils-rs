@@ -16,7 +16,7 @@ struct Args {
     debug: bool,
 }
 
-fn run(args: Args) -> Result<(), io::Error> {
+fn run(args: Args) -> io::Result<()> {
     let file = RPMFile::open(args.path)?;
     let info: RPMInfo = (&file).into();
 

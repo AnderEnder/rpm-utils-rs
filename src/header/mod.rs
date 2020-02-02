@@ -7,6 +7,8 @@ pub use lead::*;
 pub use tags::*;
 
 use num_traits::FromPrimitive;
+use omnom::prelude::*;
+use omnom::ReadBytes;
 use std::char;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -38,18 +40,17 @@ where
         }
     }
 
-    pub fn read<R>(fh: &mut R, indexes: &[Index<T>], size: usize) -> Result<Self, io::Error>
+    pub fn read<R>(fh: &mut R, indexes: &[Index<T>], size: usize) -> io::Result<Self>
     where
         R: Read + Seek,
     {
         let mut s_data = vec![0_u8; size];
         fh.read_exact(&mut s_data)?;
 
-        let tags = Self::tags_from_raw(&indexes, &s_data);
-        Ok(tags)
+        Self::tags_from_raw(&indexes, &s_data)
     }
 
-    fn tags_from_raw(indexes: &[Index<T>], data: &[u8]) -> Self {
+    fn tags_from_raw(indexes: &[Index<T>], data: &[u8]) -> io::Result<Self> {
         let tags = (0..indexes.len())
             .map(|i| {
                 let item = &indexes[i];
@@ -57,11 +58,15 @@ where
 
                 let tag_value = match item.itype {
                     Type::Null => RType::Null,
-                    Type::Char => RType::Char(char::from_bytes(&data, ps)),
-                    Type::Int8 => extract(data, ps, item.count, RType::Int8, RType::Int8Array),
-                    Type::Int16 => extract(data, ps, item.count, RType::Int16, RType::Int16Array),
-                    Type::Int32 => extract(data, ps, item.count, RType::Int32, RType::Int32Array),
-                    Type::Int64 => extract(data, ps, item.count, RType::Int64, RType::Int64Array),
+                    Type::Char => {
+                        let c_byte = u32::from_bytes(&data, ps)?;
+                        let c = char::from_u32(c_byte).unwrap_or_default();
+                        RType::Char(c)
+                    }
+                    Type::Int8 => extract(data, ps, item.count, RType::Int8, RType::Int8Array)?,
+                    Type::Int16 => extract(data, ps, item.count, RType::Int16, RType::Int16Array)?,
+                    Type::Int32 => extract(data, ps, item.count, RType::Int32, RType::Int32Array)?,
+                    Type::Int64 => extract(data, ps, item.count, RType::Int64, RType::Int64Array)?,
 
                     Type::String => {
                         let ps2 = indexes[i + 1].offset;
@@ -88,10 +93,10 @@ where
                     }
                 };
 
-                (item.tag, tag_value)
+                Ok((item.tag, tag_value))
             })
-            .collect();
-        Tags(tags)
+            .collect::<io::Result<HashMap<_, _>>>()?;
+        Ok(Tags(tags))
     }
 }
 
@@ -101,45 +106,23 @@ fn extract<T: FromBytes>(
     count: usize,
     single: fn(T) -> RType,
     multiple: fn(Vec<T>) -> RType,
-) -> RType {
+) -> io::Result<RType> {
     if count > 1 {
-        let values: Vec<T> = (0..count)
+        let values = (0..count)
             .map(|i| T::from_bytes(&data, position + i * size_of::<T>()))
-            .collect();
-        multiple(values)
+            .collect::<io::Result<Vec<T>>>()?;
+        Ok(multiple(values))
     } else {
-        single(T::from_bytes(&data, position))
+        Ok(single(T::from_bytes(&data, position)?))
     }
 }
 
-trait FromBytes {
-    fn from_bytes(data: &[u8], position: usize) -> Self;
+trait FromBytes: Sized {
+    fn from_bytes(data: &[u8], position: usize) -> io::Result<Self>;
 }
 
-impl FromBytes for u8 {
-    fn from_bytes(data: &[u8], position: usize) -> u8 {
-        u8::from_be_bytes([data[position]; 1])
+impl<T: ReadBytes> FromBytes for T {
+    fn from_bytes(data: &[u8], position: usize) -> io::Result<Self> {
+        (&data[position..]).read_be()
     }
 }
-
-impl FromBytes for char {
-    fn from_bytes(data: &[u8], position: usize) -> char {
-        char::from_u32(u32::from_bytes(&data, position)).unwrap_or_default()
-    }
-}
-
-macro_rules! from_bytes (
-    ($item:ty, $number:expr) => (
-        impl FromBytes for $item {
-            fn from_bytes(data: &[u8], position: usize) -> $item {
-                let mut bytes: [u8; $number] = Default::default();
-                bytes.copy_from_slice(&data[position..position + $number]);
-                <$item>::from_be_bytes(bytes)
-            }
-        }
-    );
-);
-
-from_bytes!(u16, 2);
-from_bytes!(u32, 4);
-from_bytes!(u64, 8);

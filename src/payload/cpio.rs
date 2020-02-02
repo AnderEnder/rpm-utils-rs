@@ -26,7 +26,7 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
-    pub fn read<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+    pub fn read<R: Read>(reader: &mut R) -> io::Result<Self> {
         let mut magic = [0_u8; 6];
         reader.read_exact(&mut magic)?;
 
@@ -88,7 +88,7 @@ impl FileEntry {
         })
     }
 
-    fn write<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+    fn write<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         writer.write_all(MAGIC)?;
         writer.write_u32_as_hex(self.ino)?;
         writer.write_u32_as_hex(self.mode)?;
@@ -199,14 +199,14 @@ impl TryFrom<&PathBuf> for FileEntry {
 }
 
 fn major(x: u32) -> u32 {
-    ((x >> 8) & 0x7F)
+    (x >> 8) & 0x7F
 }
 
 fn minor(x: u32) -> u32 {
-    (x & 0xFF)
+    x & 0xFF
 }
 
-pub fn read_entries<R: Read + Seek>(reader: &mut R) -> Result<Vec<FileEntry>, io::Error> {
+pub fn read_entries<R: Read + Seek>(reader: &mut R) -> io::Result<Vec<FileEntry>> {
     let mut entries = Vec::new();
 
     loop {
@@ -224,7 +224,7 @@ pub fn read_entries<R: Read + Seek>(reader: &mut R) -> Result<Vec<FileEntry>, io
 pub fn read_entry<R: Read + Seek, W: Write>(
     reader: &mut R,
     writer: &mut W,
-) -> Result<(FileEntry, u64), io::Error> {
+) -> io::Result<(FileEntry, u64)> {
     let entry = FileEntry::read(reader)?;
     let number = io_copy_exact(reader, writer, entry.file_size)?;
     let position = align_n_bytes(entry.file_size, 4);
@@ -237,7 +237,7 @@ pub fn extract_entry<R: Read + Seek>(
     dir: &PathBuf,
     creates_dir: bool,
     change_owner: bool,
-) -> Result<(FileEntry, u64), io::Error> {
+) -> io::Result<(FileEntry, u64)> {
     let entry = FileEntry::read(reader)?;
 
     // write content to file only if it is not a last pseudo
@@ -299,7 +299,7 @@ pub fn extract_entries<R: Read + Seek>(
     dir: &PathBuf,
     creates_dir: bool,
     change_owner: bool,
-) -> Result<Vec<FileEntry>, io::Error> {
+) -> io::Result<Vec<FileEntry>> {
     let mut entries = Vec::new();
     loop {
         let (entry, _) = extract_entry(reader, dir, creates_dir, change_owner)?;
@@ -313,11 +313,7 @@ pub fn extract_entries<R: Read + Seek>(
 
 const BUFSIZE: usize = 8 * 1024;
 
-fn io_copy_exact<R: Read, W: Write>(
-    reader: &mut R,
-    writer: &mut W,
-    count: u32,
-) -> Result<u32, io::Error> {
+fn io_copy_exact<R: Read, W: Write>(reader: &mut R, writer: &mut W, count: u32) -> io::Result<u32> {
     let mut buf = [0_u8; BUFSIZE];
     let buf_count = count as usize / BUFSIZE;
     let buf_left = count as usize % BUFSIZE;
@@ -389,19 +385,19 @@ impl<T: Read + Seek> Iterator for CpioEntries<T> {
 }
 
 pub trait CpioRead {
-    fn read_cpio_entry(&mut self) -> Result<FileEntry, io::Error>;
+    fn read_cpio_entry(&mut self) -> io::Result<FileEntry>;
     fn read_cpio_entry_payload<W: Write>(
         &mut self,
         entry: &FileEntry,
         write: &mut W,
-    ) -> Result<(), io::Error>;
+    ) -> io::Result<()>;
 }
 
 impl<R> CpioRead for R
 where
     R: Read + Seek,
 {
-    fn read_cpio_entry(&mut self) -> Result<FileEntry, io::Error> {
+    fn read_cpio_entry(&mut self) -> io::Result<FileEntry> {
         FileEntry::read(self)
     }
 
@@ -409,7 +405,7 @@ where
         &mut self,
         entry: &FileEntry,
         writer: &mut W,
-    ) -> Result<(), io::Error> {
+    ) -> io::Result<()> {
         let file_size = entry.file_size;
         io_copy_exact(self, writer, file_size)?;
         let position = align_n_bytes(entry.file_size, 4) + entry.file_size;
@@ -419,44 +415,37 @@ where
 }
 
 pub trait CpioWriter {
-    fn write_cpio_entry(&mut self, entry: FileEntry) -> Result<(), io::Error>;
+    fn write_cpio_entry(&mut self, entry: FileEntry) -> io::Result<()>;
 
-    fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> Result<(), io::Error>;
+    fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> io::Result<()>;
 
-    fn write_cpio_file(&mut self, path: &PathBuf) -> Result<(), io::Error> {
+    fn write_cpio_file(&mut self, path: &PathBuf) -> io::Result<()> {
         let entry: FileEntry = path.try_into()?;
         self.write_cpio_entry(entry)?;
         let mut file = File::open(path)?;
         self.write_cpio_entry_payload(&mut file)
     }
 
-    fn write_cpio_files(&mut self, paths: Vec<PathBuf>) -> Result<(), io::Error> {
+    fn write_cpio_files(&mut self, paths: Vec<PathBuf>) -> io::Result<()> {
         for path in &paths {
             self.write_cpio_file(path)?
         }
         self.cpio_close()
     }
 
-    fn write_cpio_record<R: Read>(
-        &mut self,
-        record: FileEntry,
-        data: &mut R,
-    ) -> Result<(), io::Error> {
+    fn write_cpio_record<R: Read>(&mut self, record: FileEntry, data: &mut R) -> io::Result<()> {
         self.write_cpio_entry(record)?;
         self.write_cpio_entry_payload(data)
     }
 
-    fn write_cpio_records<R: Read>(
-        &mut self,
-        records: Vec<(FileEntry, &mut R)>,
-    ) -> Result<(), io::Error> {
+    fn write_cpio_records<R: Read>(&mut self, records: Vec<(FileEntry, &mut R)>) -> io::Result<()> {
         for (record, data) in records.into_iter() {
             self.write_cpio_record(record, data)?;
         }
         self.cpio_close()
     }
 
-    fn cpio_close(&mut self) -> Result<(), io::Error> {
+    fn cpio_close(&mut self) -> io::Result<()> {
         self.write_cpio_entry(FileEntry::default())
     }
 }
@@ -465,11 +454,11 @@ impl<W> CpioWriter for W
 where
     W: Write,
 {
-    fn write_cpio_entry(&mut self, entry: FileEntry) -> Result<(), io::Error> {
+    fn write_cpio_entry(&mut self, entry: FileEntry) -> io::Result<()> {
         entry.write(self)
     }
 
-    fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> Result<(), io::Error> {
+    fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> io::Result<()> {
         let file_size = io::copy(reader, self)? as u32;
         let number = align_n_bytes(file_size, 4) as usize;
         let pad = vec![0_u8; number];
@@ -490,14 +479,14 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
         }
     }
 
-    pub fn add_raw_file(mut self, path: &PathBuf) -> Result<Self, io::Error> {
+    pub fn add_raw_file(mut self, path: &PathBuf) -> io::Result<Self> {
         let record: FileEntry = path.try_into()?;
         let reader = File::open(path)?;
         self.records.push((record, Box::new(reader)));
         Ok(self)
     }
 
-    pub fn add_file(mut self, path: &str, as_path: &str) -> Result<Self, io::Error> {
+    pub fn add_file(mut self, path: &str, as_path: &str) -> io::Result<Self> {
         let file = PathBuf::from(path);
         let mut record: FileEntry = (&file).try_into()?;
         record.name = as_path.to_owned();
@@ -506,7 +495,7 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
         Ok(self)
     }
 
-    pub fn build(self) -> Result<(), io::Error> {
+    pub fn build(self) -> io::Result<()> {
         match self {
             CpioBuilder {
                 writer: Some(mut writer),
@@ -523,7 +512,7 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
 }
 
 impl CpioBuilder<File> {
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
+    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let writer = OpenOptions::new().create(true).write(true).open(path)?;
         Ok(CpioBuilder {
             writer: Some(writer),
@@ -536,7 +525,7 @@ impl CpioBuilder<File> {
 mod tests {
     use super::*;
     #[test]
-    fn test_cpio_write_entry() -> Result<(), io::Error> {
+    fn test_cpio_write_entry() -> io::Result<()> {
         let mut writer = Vec::new();
         writer.write_cpio_entry(FileEntry::default())?;
         let entry = FileEntry::read(&mut writer.as_slice())?;
