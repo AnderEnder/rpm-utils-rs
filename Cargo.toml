@@ -17,6 +17,7 @@ zstd = "0.5"
 xz2 = "0.1"
 hex = "0.4"
 filetime = "0.2"
+omnom = "3"
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.15"

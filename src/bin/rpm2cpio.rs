@@ -16,7 +16,7 @@ struct Args {
     output: PathBuf,
 }
 
-fn run(args: Args) -> Result<(), io::Error> {
+fn run(args: Args) -> io::Result<()> {
     let rpm = RPMFile::open(args.path)?;
     rpm.copy_payload(&args.output)?;
     Ok(())

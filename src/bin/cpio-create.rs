@@ -16,7 +16,7 @@ struct Args {
     files: Vec<PathBuf>,
 }
 
-fn run(args: Args) -> Result<(), io::Error> {
+fn run(args: Args) -> io::Result<()> {
     let mut builder = CpioBuilder::open(&args.file)?;
     for path in args.files.into_iter() {
         builder = builder.add_raw_file(&path)?;
