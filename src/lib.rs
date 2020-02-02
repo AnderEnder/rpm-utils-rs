@@ -14,6 +14,7 @@ use std::path::Path;
 use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder;
 
+use header::RType;
 use header::{HeaderLead, IndexArray, SignatureTag, Tag, Tags};
 use lead::Lead;
 use payload::{FileInfo, RPMPayload};
@@ -129,79 +130,79 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
         let dirs = rpm
             .header_tags
             .get_value(Tag::DirNames)
-            .unwrap()
+            .unwrap_or(RType::StringArray(Vec::new()))
             .as_string_array()
             .unwrap();
         let dir_indexes = rpm
             .header_tags
             .get_value(Tag::DirIndexes)
-            .unwrap()
+            .unwrap_or(RType::Int32Array(Vec::new()))
             .as_u32_array()
             .unwrap();
         let basenames = rpm
             .header_tags
             .get_value(Tag::BaseNames)
-            .unwrap()
+            .unwrap_or(RType::StringArray(Vec::new()))
             .as_string_array()
             .unwrap();
         let filesizes = rpm
             .header_tags
             .get_value(Tag::FileSizes)
-            .unwrap()
+            .unwrap_or(RType::Int64Array(Vec::new()))
             .as_u64_array()
             .unwrap();
         let users: Vec<String> = rpm
             .header_tags
             .get_value(Tag::FileUserName)
-            .unwrap()
+            .unwrap_or(RType::StringArray(Vec::new()))
             .as_string_array()
             .unwrap();
         let groups: Vec<String> = rpm
             .header_tags
             .get_value(Tag::FileGroupName)
-            .unwrap()
+            .unwrap_or(RType::StringArray(Vec::new()))
             .as_string_array()
             .unwrap();
         let flags: Vec<u32> = rpm
             .header_tags
             .get_value(Tag::FileFlags)
-            .unwrap()
+            .unwrap_or(RType::Int32Array(Vec::new()))
             .as_u32_array()
             .unwrap();
         let mtimes: Vec<u32> = rpm
             .header_tags
             .get_value(Tag::FileMTimes)
-            .unwrap()
+            .unwrap_or(RType::Int32Array(Vec::new()))
             .as_u32_array()
             .unwrap();
         let linknames: Vec<String> = rpm
             .header_tags
             .get_value(Tag::FileGroupName)
-            .unwrap()
+            .unwrap_or(RType::StringArray(Vec::new()))
             .as_string_array()
             .unwrap();
         let modes: Vec<u16> = rpm
             .header_tags
             .get_value(Tag::FileModes)
-            .unwrap()
+            .unwrap_or(RType::Int16Array(Vec::new()))
             .as_u16_array()
             .unwrap();
         let devices: Vec<u32> = rpm
             .header_tags
             .get_value(Tag::FileDevices)
-            .unwrap()
+            .unwrap_or(RType::Int32Array(Vec::new()))
             .as_u32_array()
             .unwrap();
         let inodes: Vec<u32> = rpm
             .header_tags
             .get_value(Tag::FileInodes)
-            .unwrap()
+            .unwrap_or(RType::Int32Array(Vec::new()))
             .as_u32_array()
             .unwrap();
         let digests: Vec<String> = rpm
             .header_tags
             .get_value(Tag::FileMD5s)
-            .unwrap()
+            .unwrap_or(RType::StringArray(Vec::new()))
             .as_string_array()
             .unwrap();
 
@@ -311,13 +312,13 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
             license: rpm
                 .header_tags
                 .get_value(Tag::License)
-                .unwrap()
+                .unwrap_or(RType::String("".to_owned()))
                 .as_string()
                 .unwrap(),
             source_rpm: rpm
                 .header_tags
                 .get_value(Tag::SourceRpm)
-                .unwrap()
+                .unwrap_or(RType::String("".to_owned()))
                 .as_string()
                 .unwrap(),
             build_time,
