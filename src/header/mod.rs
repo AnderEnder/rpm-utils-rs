@@ -40,6 +40,67 @@ where
         }
     }
 
+    pub fn get_as_string(&self, name: T) -> String {
+        self.get_value(name)
+            .expect("Tag: not found")
+            .as_string()
+            .expect("Tag: is not a string")
+    }
+
+    pub fn get_as_string_or(&self, name: T) -> String {
+        if let Some(s) = self.get_value(name) {
+            s.as_string().expect("Tag: is not a string")
+        } else {
+            Default::default()
+        }
+    }
+
+    pub fn get_as_string_array_or(&self, name: T) -> Vec<String> {
+        if let Some(s) = self.get_value(name) {
+            s.as_string_array().expect("Tag: is not a string array")
+        } else {
+            Default::default()
+        }
+    }
+
+    pub fn get_as_u64(&self, name: T) -> u64 {
+        self.get_value(name)
+            .expect("Tag: not found")
+            .as_u64()
+            .expect("Tag: is not a integer")
+    }
+
+    pub fn get_as_u32(&self, name: T) -> u32 {
+        self.get_value(name)
+            .expect("Tag: not found")
+            .as_u32()
+            .expect("Tag: is not a integer")
+    }
+
+    pub fn get_as_u64_array_or(&self, name: T) -> Vec<u64> {
+        if let Some(s) = self.get_value(name) {
+            s.as_u64_array().expect("Tag: is not a u64 array")
+        } else {
+            Default::default()
+        }
+    }
+
+    pub fn get_as_u32_array_or(&self, name: T) -> Vec<u32> {
+        if let Some(s) = self.get_value(name) {
+            s.as_u32_array().expect("Tag: is not a u32 array")
+        } else {
+            Default::default()
+        }
+    }
+
+    pub fn get_as_u16_array_or(&self, name: T) -> Vec<u16> {
+        if let Some(s) = self.get_value(name) {
+            s.as_u16_array().expect("Tag: is not a u16 array")
+        } else {
+            Default::default()
+        }
+    }
+
     pub fn read<R>(fh: &mut R, indexes: &[Index<T>], size: usize) -> io::Result<Self>
     where
         R: Read + Seek,
