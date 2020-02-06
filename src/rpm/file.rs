@@ -1,18 +1,13 @@
 use bzip2::read::BzDecoder;
-use chrono::{Local, TimeZone};
 use flate2::read::GzDecoder;
-use itertools::multizip;
-use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder;
 
-use crate::header::RType;
 use crate::header::{HeaderLead, IndexArray, SignatureTag, Tag, Tags};
 use crate::lead::Lead;
-use crate::payload::{FileInfo, RPMPayload};
 use crate::utils::align_n_bytes;
 
 #[derive(Debug)]

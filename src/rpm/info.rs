@@ -3,11 +3,10 @@ use itertools::multizip;
 use std::fmt;
 use std::io::Read;
 
-use crate::header::RType;
-use crate::header::{SignatureTag, Tag};
-use crate::payload::{FileInfo, RPMPayload};
-
 use super::file::RPMFile;
+use crate::header::{SignatureTag, Tag};
+use crate::payload::FileInfo;
+use crate::payload::RPMPayload;
 
 #[derive(Debug)]
 pub struct RPMInfo {
