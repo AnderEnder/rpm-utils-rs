@@ -77,6 +77,13 @@ where
             .expect("Tag: is not a integer")
     }
 
+    pub fn get_as_i64(&self, name: T) -> i64 {
+        self.get_value(name)
+            .expect("Tag: not found")
+            .as_i64()
+            .expect("Tag: is not a integer")
+    }
+
     pub fn get_as_u64_array_or(&self, name: T) -> Vec<u64> {
         if let Some(s) = self.get_value(name) {
             s.as_u64_array().expect("Tag: is not a u64 array")

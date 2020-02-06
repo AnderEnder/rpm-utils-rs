@@ -1,23 +1,34 @@
+use chrono::Utc;
+use gethostname::gethostname;
+use std::ffi::OsString;
+
 #[derive(Debug, Default)]
 pub struct RPMBuilder {
     filename: Option<String>,
     name: Option<String>,
     version: Option<String>,
-    release: Option<String>,
+    release: String,
     epoch: u8,
     arch: Option<String>,
     group: Option<String>,
     license: Option<String>,
     source_rpm: Option<String>,
-    build_time: Option<String>,
-    build_host: Option<String>,
+    build_time: i64,
+    build_host: OsString,
     summary: Option<String>,
     description: Option<String>,
 }
 
 impl RPMBuilder {
     pub fn new() -> Self {
-        Default::default()
+        let build_time = Utc::now().timestamp();
+        Self {
+            epoch: 0,
+            release: "1".to_owned(),
+            build_host: gethostname(),
+            build_time,
+            ..Default::default()
+        }
     }
 
     pub fn filename(mut self, file: &str) -> Self {
@@ -36,7 +47,7 @@ impl RPMBuilder {
     }
 
     pub fn release(mut self, release: &str) -> Self {
-        self.release = Some(release.to_owned());
+        self.release = release.to_owned();
         self
     }
 
@@ -62,7 +73,6 @@ impl RPMBuilder {
 
     //    source_rpm: Option<String>,
     //    build_time: Option<String>,
-    //    build_host: Option<String>,
 
     pub fn summary(mut self, summary: &str) -> Self {
         self.summary = Some(summary.to_owned());
@@ -71,6 +81,11 @@ impl RPMBuilder {
 
     pub fn description(mut self, description: &str) -> Self {
         self.description = Some(description.to_owned());
+        self
+    }
+
+    pub fn build_host(mut self, build_host: &str) -> Self {
+        self.build_host = OsString::from(build_host);
         self
     }
 }

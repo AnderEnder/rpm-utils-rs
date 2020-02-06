@@ -102,11 +102,8 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
             files,
         };
 
-        let build_int = header_tags.get_as_u32(Tag::BuildTime);
-        let build_time = Local
-            .timestamp(i64::from(build_int), 0)
-            .format("%c")
-            .to_string();
+        let build_int = header_tags.get_as_i64(Tag::BuildTime);
+        let build_time = Local.timestamp(build_int, 0).format("%c").to_string();
 
         RPMInfo {
             name: header_tags.get_as_string(Tag::Name),

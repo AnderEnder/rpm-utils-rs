@@ -90,6 +90,15 @@ impl RType {
         }
     }
 
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            RType::Int8(n) => Some(i64::from(*n)),
+            RType::Int16(n) => Some(i64::from(*n)),
+            RType::Int32(n) => Some(i64::from(*n)),
+            _ => None,
+        }
+    }
+
     pub fn as_u32_array(&self) -> Option<Vec<u32>> {
         match self {
             RType::Int8Array(a) => Some(a.iter().map(|x| u32::from(*x)).collect()),
