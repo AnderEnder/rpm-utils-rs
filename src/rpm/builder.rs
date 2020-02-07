@@ -2,6 +2,13 @@ use chrono::Utc;
 use gethostname::gethostname;
 use std::ffi::OsString;
 
+struct InnerPath {
+    path: String,
+    user: String,
+    group: String,
+    mode: u8,
+}
+
 #[derive(Debug, Default)]
 pub struct RPMBuilder {
     filename: Option<String>,
@@ -24,8 +31,8 @@ pub struct RPMBuilder {
     url: Option<String>,
     //  BINARY, SOURCE
     package_type: Option<String>,
-    default_user: Option<String>,
-    default_group: Option<String>,
+    default_user: String,
+    default_group: String,
     directories: Vec<String>,
     files: Vec<String>,
     links: Vec<String>,
@@ -40,6 +47,8 @@ impl RPMBuilder {
             arch: "noarch".to_owned(),
             build_host: gethostname(),
             build_time,
+            default_user: "root".to_owned(),
+            default_group: "root".to_owned(),
             ..Default::default()
         }
     }
@@ -109,6 +118,16 @@ impl RPMBuilder {
         self
     }
 
+    pub fn default_user(mut self, user: &str) -> Self {
+        self.default_user = user.to_owned();
+        self
+    }
+
+    pub fn default_group(mut self, group: &str) -> Self {
+        self.default_group = group.to_owned();
+        self
+    }
+
     // scripts
     // install_utils
     // pre_install
@@ -117,6 +136,39 @@ impl RPMBuilder {
     // postUninstall
     // preTrans
     // postTrans
+
+    pub fn add_file(mut self, file: &str) -> Self {
+        self.files.push(file.to_owned());
+        self
+    }
+
+    pub fn add_files(mut self, files: Vec<&str>) -> Self {
+        let files_vec: Vec<String> = files.into_iter().map(|x| x.to_owned()).collect();
+        self.files.extend_from_slice(&files_vec);
+        self
+    }
+
+    pub fn add_directory(mut self, dir: &str) -> Self {
+        self.directories.push(dir.to_owned());
+        self
+    }
+
+    pub fn add_directories(mut self, dirs: Vec<&str>) -> Self {
+        let dirs_vec: Vec<String> = dirs.into_iter().map(|x| x.to_owned()).collect();
+        self.directories.extend_from_slice(&dirs_vec);
+        self
+    }
+
+    pub fn add_link(mut self, link: &str) -> Self {
+        self.links.push(link.to_owned());
+        self
+    }
+
+    pub fn add_links(mut self, dirs: Vec<&str>) -> Self {
+        let links_vec: Vec<String> = dirs.into_iter().map(|x| x.to_owned()).collect();
+        self.links.extend_from_slice(&links_vec);
+        self
+    }
 }
 
 #[cfg(test)]
