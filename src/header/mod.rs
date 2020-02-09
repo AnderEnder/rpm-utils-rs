@@ -26,6 +26,10 @@ impl<T> Tags<T>
 where
     T: FromPrimitive + Default + Eq + Hash + Copy,
 {
+    pub fn new() -> Self {
+        Tags(HashMap::new())
+    }
+
     pub fn get_value(&self, name: T) -> Option<RType> {
         self.0.get(&name).cloned()
     }
@@ -38,6 +42,10 @@ where
             Some(value) => value.clone().into(),
             _ => O::default(),
         }
+    }
+
+    pub fn insert(&mut self, key: T, value: RType) {
+        self.0.insert(key, value);
     }
 
     pub fn get_as_string(&self, name: T) -> String {
@@ -63,17 +71,38 @@ where
         }
     }
 
-    pub fn get_as_u64(&self, name: T) -> u64 {
+    pub fn get_as_u8(&self, name: T) -> u8 {
         self.get_value(name)
             .expect("Tag: not found")
-            .as_u64()
-            .expect("Tag: is not a integer")
+            .as_u8()
+            .expect("Tag: is not a u8")
+    }
+    pub fn get_as_u8_default(&self, name: T) -> u8 {
+        if let Some(s) = self.get_value(name) {
+            s.as_u8().expect("Tag: is not a u8")
+        } else {
+            Default::default()
+        }
+    }
+
+    pub fn get_as_u16(&self, name: T) -> u16 {
+        self.get_value(name)
+            .expect("Tag: not found")
+            .as_u16()
+            .expect("Tag: is not a u16")
     }
 
     pub fn get_as_u32(&self, name: T) -> u32 {
         self.get_value(name)
             .expect("Tag: not found")
             .as_u32()
+            .expect("Tag: is not a integer")
+    }
+
+    pub fn get_as_u64(&self, name: T) -> u64 {
+        self.get_value(name)
+            .expect("Tag: not found")
+            .as_u64()
             .expect("Tag: is not a integer")
     }
 

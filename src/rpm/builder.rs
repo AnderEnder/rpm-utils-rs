@@ -36,6 +36,7 @@ pub struct RPMBuilder {
     directories: Vec<String>,
     files: Vec<String>,
     links: Vec<String>,
+    compression: String,
 }
 
 impl RPMBuilder {
@@ -49,6 +50,7 @@ impl RPMBuilder {
             build_time,
             default_user: "root".to_owned(),
             default_group: "root".to_owned(),
+            compression: "gzip".to_owned(),
             ..Default::default()
         }
     }
@@ -128,6 +130,10 @@ impl RPMBuilder {
         self
     }
 
+    pub fn compression(mut self, format: &str) -> Self {
+        self.compression = format.to_owned();
+        self
+    }
     // scripts
     // install_utils
     // pre_install
@@ -169,21 +175,23 @@ impl RPMBuilder {
         self.links.extend_from_slice(&links_vec);
         self
     }
+
+    pub fn build(mut self) {}
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::u32;
     #[test]
     fn test_builder_smoke() {
         let rpm = RPMBuilder::new()
-            .name("Test")
+            .package_name("Test")
             .description("Test Package")
             .summary("Test Package")
             .version("0.1")
             .release("1234")
             .epoch(1)
-            .arch("noarch");
+            .arch("noarch")
+            .compression("gzip");
     }
 }

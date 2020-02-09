@@ -1,17 +1,17 @@
 use chrono::{Local, TimeZone};
 use itertools::multizip;
 use std::fmt;
-use std::io::Read;
+use std::io::{Read, Write};
 
 use super::file::RPMFile;
-use crate::header::{SignatureTag, Tag};
+use crate::header::{RType, SignatureTag, Tag, Tags};
 use crate::payload::FileInfo;
 use crate::payload::RPMPayload;
 
 #[derive(Debug)]
 pub struct RPMInfo {
     pub name: String,
-    pub epoch: String,
+    pub epoch: u8,
     pub version: String,
     pub release: String,
     pub arch: String,
@@ -107,7 +107,7 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
 
         RPMInfo {
             name: header_tags.get_as_string(Tag::Name),
-            epoch: header_tags.get_as_string(Tag::Epoch),
+            epoch: header_tags.get_as_u8_default(Tag::Epoch),
             version: header_tags.get_as_string(Tag::Version),
             release: header_tags.get_as_string(Tag::Release),
             arch: header_tags.get_as_string(Tag::Arch),
@@ -121,5 +121,25 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
             description: header_tags.get_as_string(Tag::Description),
             payload,
         }
+    }
+}
+
+impl RPMInfo {
+    pub fn into_rpm<T: Write>(self, writer: T) {
+        let signature_tags = Tags::<SignatureTag>::new();
+        let mut header_tags = Tags::<Tag>::new();
+
+        header_tags.insert(Tag::Name, RType::String(self.name));
+        header_tags.insert(Tag::Epoch, RType::Int8(self.epoch));
+        header_tags.insert(Tag::Version, RType::String(self.version));
+        header_tags.insert(Tag::Arch, RType::String(self.arch));
+        header_tags.insert(Tag::Group, RType::String(self.group));
+        header_tags.insert(Tag::Size, RType::Int64(self.size));
+        header_tags.insert(Tag::License, RType::String(self.license));
+        header_tags.insert(Tag::SourceRpm, RType::String(self.source_rpm));
+        // header_tags.insert(Tag::BuildTime, RType::Int64(self.build_time));
+        header_tags.insert(Tag::BuildHost, RType::String(self.build_host));
+        header_tags.insert(Tag::Summary, RType::String(self.summary));
+        header_tags.insert(Tag::Description, RType::String(self.description));
     }
 }
