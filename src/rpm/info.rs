@@ -126,7 +126,7 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
 
 impl RPMInfo {
     pub fn into_rpm<T: Write>(self, writer: T) {
-        let signature_tags = Tags::<SignatureTag>::new();
+        let mut signature_tags = Tags::<SignatureTag>::new();
         let mut header_tags = Tags::<Tag>::new();
 
         header_tags.insert(Tag::Name, RType::String(self.name));
@@ -144,5 +144,13 @@ impl RPMInfo {
         header_tags.insert(Tag::BuildHost, RType::String(self.build_host));
         header_tags.insert(Tag::Summary, RType::String(self.summary));
         header_tags.insert(Tag::Description, RType::String(self.description));
+
+        signature_tags.insert(SignatureTag::PayloadSize, RType::Int64(self.payload.size));
+        header_tags.insert(Tag::PayloadFormat, RType::String(self.payload.format));
+        header_tags.insert(
+            Tag::PayloadCompressor,
+            RType::String(self.payload.compressor),
+        );
+        header_tags.insert(Tag::PayloadFlags, RType::String(self.payload.flags));
     }
 }

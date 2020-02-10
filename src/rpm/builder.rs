@@ -1,6 +1,7 @@
 use chrono::Utc;
 use gethostname::gethostname;
 use std::ffi::OsString;
+use std::fs::OpenOptions;
 
 struct InnerPath {
     path: String,
@@ -176,7 +177,13 @@ impl RPMBuilder {
         self
     }
 
-    pub fn build(mut self) {}
+    pub fn build(&self) {
+        let mut writer = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(self.filename.clone().unwrap())
+            .unwrap();
+    }
 }
 
 #[cfg(test)]
