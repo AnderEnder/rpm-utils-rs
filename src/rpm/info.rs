@@ -1,5 +1,6 @@
 use chrono::{Local, TimeZone};
 use itertools::multizip;
+use std::convert::TryInto;
 use std::fmt;
 use std::io::{Read, Write};
 
@@ -19,7 +20,7 @@ pub struct RPMInfo {
     pub size: u64,
     pub license: String,
     pub source_rpm: String,
-    pub build_time: String,
+    pub build_time: i64,
     pub build_host: String,
     pub summary: String,
     pub description: String,
@@ -28,6 +29,8 @@ pub struct RPMInfo {
 
 impl fmt::Display for RPMInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let build_time = Local.timestamp(self.build_time, 0).format("%c").to_string();
+
         writeln!(f, "Name        : {}", self.name)?;
         writeln!(f, "Version     : {}", self.version)?;
         writeln!(f, "Release     : {}", self.release)?;
@@ -37,7 +40,7 @@ impl fmt::Display for RPMInfo {
         writeln!(f, "License     : {}", self.license)?;
         writeln!(f, "Signature   : (unimplemented)")?;
         writeln!(f, "Source RPM  : {}", self.source_rpm)?;
-        writeln!(f, "Build Date  : {}", self.build_time)?;
+        writeln!(f, "Build Date  : {}", build_time)?;
         writeln!(f, "Build Host  : {}", self.build_host)?;
         writeln!(f, "Relocations : (unimplemented)")?;
         writeln!(f, "Summary     : {}", self.summary)?;
@@ -102,9 +105,6 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
             files,
         };
 
-        let build_int = header_tags.get_as_i64(Tag::BuildTime);
-        let build_time = Local.timestamp(build_int, 0).format("%c").to_string();
-
         RPMInfo {
             name: header_tags.get_as_string(Tag::Name),
             epoch: header_tags.get_as_u8_default(Tag::Epoch),
@@ -115,7 +115,7 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
             size: header_tags.get_as_u64(Tag::Size),
             license: header_tags.get_as_string_or(Tag::License),
             source_rpm: header_tags.get_as_string_or(Tag::SourceRpm),
-            build_time,
+            build_time: header_tags.get_as_i64(Tag::BuildTime),
             build_host: header_tags.get_as_string(Tag::BuildHost),
             summary: header_tags.get_as_string(Tag::Summary),
             description: header_tags.get_as_string(Tag::Description),
@@ -137,7 +137,10 @@ impl RPMInfo {
         header_tags.insert(Tag::Size, RType::Int64(self.size));
         header_tags.insert(Tag::License, RType::String(self.license));
         header_tags.insert(Tag::SourceRpm, RType::String(self.source_rpm));
-        // header_tags.insert(Tag::BuildTime, RType::Int64(self.build_time));
+        header_tags.insert(
+            Tag::BuildTime,
+            RType::Int64(self.build_time.try_into().unwrap()),
+        );
         header_tags.insert(Tag::BuildHost, RType::String(self.build_host));
         header_tags.insert(Tag::Summary, RType::String(self.summary));
         header_tags.insert(Tag::Description, RType::String(self.description));
