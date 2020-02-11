@@ -17,7 +17,7 @@ pub struct FileInfo {
     pub inode: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RPMPayload {
     pub size: u64,
     pub format: String,

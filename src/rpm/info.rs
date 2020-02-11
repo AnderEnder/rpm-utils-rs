@@ -9,7 +9,7 @@ use crate::header::{RType, SignatureTag, Tag, Tags};
 use crate::payload::FileInfo;
 use crate::payload::RPMPayload;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RPMInfo {
     pub name: String,
     pub epoch: u8,

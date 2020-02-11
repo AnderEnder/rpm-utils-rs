@@ -3,6 +3,8 @@ use gethostname::gethostname;
 use std::ffi::OsString;
 use std::fs::OpenOptions;
 
+use super::info::RPMInfo;
+
 struct InnerPath {
     path: String,
     user: String,
@@ -135,6 +137,7 @@ impl RPMBuilder {
         self.compression = format.to_owned();
         self
     }
+
     // scripts
     // install_utils
     // pre_install
@@ -177,12 +180,21 @@ impl RPMBuilder {
         self
     }
 
-    pub fn build(&self) {
+    pub fn build(self) {
         let mut writer = OpenOptions::new()
             .create(true)
             .write(true)
-            .open(self.filename.clone().unwrap())
+            .open(self.filename.unwrap())
             .unwrap();
+
+        let info = RPMInfo {
+            name: self.package_name.unwrap_or_default(),
+            epoch: self.epoch,
+            version: self.version.unwrap_or_default(),
+            ..Default::default()
+        };
+
+        let rpm = info.into_rpm(writer);
     }
 }
 

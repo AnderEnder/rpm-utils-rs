@@ -50,6 +50,36 @@ impl RPMFile<File> {
 }
 
 impl<T: 'static + Read + Seek> RPMFile<T> {
+    pub fn read(mut reader: T) -> io::Result<Self> {
+        let _lead = Lead::read(&mut reader)?;
+
+        let signature_lead = HeaderLead::read(&mut reader)?;
+        let signature_indexes = IndexArray::read(&mut reader, signature_lead.nindex)?;
+        let signature_tags = Tags::read(
+            &mut reader,
+            &signature_indexes,
+            signature_lead.hsize as usize,
+        )?;
+
+        // aligning to 8 bytes
+        let pos = align_n_bytes(signature_lead.hsize, 8);
+
+        reader.seek(io::SeekFrom::Current(pos.into()))?;
+
+        let header = HeaderLead::read(&mut reader)?;
+        let header_indexes = IndexArray::read(&mut reader, header.nindex)?;
+        let header_tags = Tags::read(&mut reader, &header_indexes, header.hsize as usize)?;
+
+        let payload_offset = reader.seek(SeekFrom::Current(0))?;
+
+        Ok(RPMFile {
+            signature_tags,
+            header_tags,
+            file: reader,
+            payload_offset,
+        })
+    }
+
     pub fn copy_payload(self, path: &Path) -> io::Result<u64> {
         let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
         let mut reader = self.into_uncompress_reader()?;
