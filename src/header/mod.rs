@@ -6,13 +6,13 @@ pub use index::*;
 pub use lead::*;
 pub use tags::*;
 
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 use omnom::prelude::*;
 use omnom::ReadBytes;
 use std::char;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::io::{self, Read, Seek};
+use std::io::{self, Read, Seek, Write};
 use std::mem::size_of;
 
 use crate::utils::{parse_string, parse_strings};
@@ -194,6 +194,26 @@ where
             })
             .collect::<io::Result<HashMap<_, _>>>()?;
         Ok(Tags(tags))
+    }
+
+    pub fn write<W: Write>(&self, fh: &mut W) -> io::Result<()> {
+        for (tag, value) in &self.0 {
+            match value {
+                RType::Null => {}
+                RType::Char(c) => {}
+                RType::Int8(i) => {}
+                RType::Int16(i) => {}
+                RType::Int32(i) => {}
+                RType::Int64(i) => {}
+                RType::String(s) => {}
+                RType::Bin(b) => {}
+                RType::StringArray(s) => {}
+                RType::I18nstring(s) => {}
+                _ => {}
+            }
+        }
+
+        Ok(())
     }
 }
 

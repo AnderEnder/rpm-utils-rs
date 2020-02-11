@@ -1,9 +1,9 @@
 use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 use omnom::prelude::*;
 use std::convert::TryFrom;
 use std::io;
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, Write};
 use strum_macros::Display;
 
 #[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display)]
@@ -238,9 +238,9 @@ pub struct Index<T> {
 
 impl<T> Index<T>
 where
-    T: FromPrimitive + Default,
+    T: FromPrimitive + Default + ToPrimitive,
 {
-    pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
+    pub fn read<R: Read + Seek>(fh: &mut R) -> io::Result<Self> {
         let tag_id: u32 = fh.read_be()?;
         let tag = T::from_u32(tag_id).unwrap_or_else(|| {
             println!("Unknown tag {}", tag_id);
@@ -263,15 +263,32 @@ where
             count: count as usize,
         })
     }
+
+    pub fn write<W: Write>(&self, fh: &mut W) -> io::Result<()> {
+        let tag_id = self
+            .tag
+            .to_u32()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Error: tag id is not correct"))?;
+        fh.write_be(tag_id)?;
+
+        let itype = self.itype.to_u32().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::Other, "Error: tag type is not defined")
+        })?;
+        fh.write_be(itype)?;
+
+        fh.write_be(self.offset)?;
+        fh.write_be(self.count)?;
+        Ok(())
+    }
 }
 
 pub struct IndexArray;
 
 impl IndexArray {
-    pub fn read<R, T>(fh: &mut R, nindex: usize) -> Result<Vec<Index<T>>, io::Error>
+    pub fn read<R, T>(fh: &mut R, nindex: usize) -> io::Result<Vec<Index<T>>>
     where
         R: Read + Seek,
-        T: FromPrimitive + Default,
+        T: FromPrimitive + ToPrimitive + Default,
     {
         let mut indexes = Vec::with_capacity(nindex);
         for _ in 0..nindex {
@@ -281,5 +298,17 @@ impl IndexArray {
 
         indexes.sort_by_key(|k| k.offset);
         Ok(indexes)
+    }
+
+    pub fn write<W, T>(indexes: Vec<Index<T>>, fh: &mut W) -> io::Result<()>
+    where
+        W: Write,
+        T: FromPrimitive + ToPrimitive + Default,
+    {
+        for index in &indexes {
+            index.write(fh)?;
+        }
+
+        Ok(())
     }
 }
