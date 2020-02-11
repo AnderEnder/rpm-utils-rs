@@ -1,8 +1,8 @@
 use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 use omnom::prelude::*;
 use std::fmt;
-use std::io::{self, Read, Seek};
+use std::io::{self, Read, Seek, Write};
 use strum_macros::Display;
 
 use crate::utils::parse_string;
@@ -82,6 +82,26 @@ impl Lead {
             signature_type,
             reserved,
         })
+    }
+
+    pub fn write<R: Write>(&self, fh: &mut R) -> io::Result<()> {
+        fh.write_all(&MAGIC)?;
+        fh.write_all(&[self.major, self.minor])?;
+
+        let rpm_type = self.rpm_type.to_u16().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::Other, "Error: rpm type is not correct")
+        })?;
+        fh.write_be(rpm_type)?;
+        fh.write_be(self.archnum)?;
+
+        fh.write_all(&self.name)?;
+
+        fh.write_be(self.osnum)?;
+        fh.write_be(self.signature_type)?;
+
+        // reserve
+        fh.write_all(&[0_u8; 16])?;
+        Ok(())
     }
 }
 

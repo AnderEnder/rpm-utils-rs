@@ -1,5 +1,5 @@
 use omnom::prelude::*;
-use std::io::{self, Read, Seek};
+use std::io::{self, Read, Write};
 
 pub const MAGIC_HEADER: [u8; 4] = [142, 173, 232, 1];
 
@@ -12,7 +12,7 @@ pub struct HeaderLead {
 }
 
 impl HeaderLead {
-    pub fn read<R: Read + Seek>(fh: &mut R) -> io::Result<Self> {
+    pub fn read<R: Read>(fh: &mut R) -> io::Result<Self> {
         let mut magic = [0_u8; 4];
         fh.read_exact(&mut magic)?;
 
@@ -35,6 +35,14 @@ impl HeaderLead {
             nindex: nindex as usize,
             hsize,
         })
+    }
+
+    pub fn write<W: Write>(&self, fh: &mut W) -> io::Result<()> {
+        fh.write_all(&MAGIC_HEADER)?;
+        fh.write_all(&self.reserved)?;
+        fh.write_be(self.nindex)?;
+        fh.write_be(self.hsize)?;
+        Ok(())
     }
 }
 
