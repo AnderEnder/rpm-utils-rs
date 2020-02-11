@@ -20,32 +20,8 @@ pub struct RPMFile<T> {
 
 impl RPMFile<File> {
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let mut file = OpenOptions::new().read(true).open(path)?;
-
-        let _lead = Lead::read(&mut file)?;
-
-        let signature_lead = HeaderLead::read(&mut file)?;
-        let signature_indexes = IndexArray::read(&mut file, signature_lead.nindex)?;
-        let signature_tags =
-            Tags::read(&mut file, &signature_indexes, signature_lead.hsize as usize)?;
-
-        // aligning to 8 bytes
-        let pos = align_n_bytes(signature_lead.hsize, 8);
-
-        file.seek(io::SeekFrom::Current(pos.into()))?;
-
-        let header = HeaderLead::read(&mut file)?;
-        let header_indexes = IndexArray::read(&mut file, header.nindex)?;
-        let header_tags = Tags::read(&mut file, &header_indexes, header.hsize as usize)?;
-
-        let payload_offset = file.seek(SeekFrom::Current(0))?;
-
-        Ok(RPMFile {
-            signature_tags,
-            header_tags,
-            file,
-            payload_offset,
-        })
+        let file = OpenOptions::new().read(true).open(path)?;
+        Self::read(file)
     }
 }
 
