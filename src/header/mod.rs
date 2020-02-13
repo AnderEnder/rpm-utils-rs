@@ -156,7 +156,7 @@ where
                 let tag_value = match item.itype {
                     Type::Null => RType::Null,
                     Type::Char => {
-                        let c_byte = u32::from_bytes(&data, ps)?;
+                        let c_byte = (&data[ps..]).read_be()?;
                         let c = char::from_u32(c_byte).unwrap_or_default();
                         RType::Char(c)
                     }
@@ -197,19 +197,60 @@ where
     }
 
     pub fn write<W: Write>(&self, fh: &mut W) -> io::Result<()> {
-        for (tag, value) in &self.0 {
+        for (_, value) in &self.0 {
             match value {
                 RType::Null => {}
-                RType::Char(c) => {}
-                RType::Int8(i) => {}
-                RType::Int16(i) => {}
-                RType::Int32(i) => {}
-                RType::Int64(i) => {}
-                RType::String(s) => {}
-                RType::Bin(b) => {}
-                RType::StringArray(s) => {}
-                RType::I18nstring(s) => {}
-                _ => {}
+                RType::Char(c) => {
+                    fh.write_be(*c as u32)?;
+                }
+                RType::Int8(i) => {
+                    fh.write_be(*i)?;
+                }
+                RType::Int16(i) => {
+                    fh.write_be(*i)?;
+                }
+                RType::Int32(i) => {
+                    fh.write_be(*i)?;
+                }
+                RType::Int64(i) => {
+                    fh.write_be(*i)?;
+                }
+                RType::String(s) => {
+                    fh.write_all(s.as_bytes())?;
+                }
+                RType::Bin(b) => {
+                    fh.write_all(b)?;
+                }
+                RType::StringArray(vector) => {
+                    for s in vector {
+                        fh.write_all(s.as_bytes())?;
+                        fh.write_be(0_u8)?;
+                    }
+                }
+                RType::I18nstring(s) => {
+                    fh.write_all(s.as_bytes())?;
+                    fh.write_be(0_u8)?;
+                }
+                RType::Int8Array(vector) => {
+                    for value in vector {
+                        fh.write_be(*value)?;
+                    }
+                }
+                RType::Int16Array(vector) => {
+                    for value in vector {
+                        fh.write_be(*value)?;
+                    }
+                }
+                RType::Int32Array(vector) => {
+                    for value in vector {
+                        fh.write_be(*value)?;
+                    }
+                }
+                RType::Int64Array(vector) => {
+                    for value in vector {
+                        fh.write_be(*value)?;
+                    }
+                }
             }
         }
 
@@ -217,7 +258,7 @@ where
     }
 }
 
-fn extract<T: FromBytes>(
+fn extract<T: ReadBytes>(
     data: &[u8],
     position: usize,
     count: usize,
@@ -226,20 +267,13 @@ fn extract<T: FromBytes>(
 ) -> io::Result<RType> {
     if count > 1 {
         let values = (0..count)
-            .map(|i| T::from_bytes(&data, position + i * size_of::<T>()))
+            .map(|i| {
+                let pos = position + i * size_of::<T>();
+                (&data[pos..]).read_be()
+            })
             .collect::<io::Result<Vec<T>>>()?;
         Ok(multiple(values))
     } else {
-        Ok(single(T::from_bytes(&data, position)?))
-    }
-}
-
-trait FromBytes: Sized {
-    fn from_bytes(data: &[u8], position: usize) -> io::Result<Self>;
-}
-
-impl<T: ReadBytes> FromBytes for T {
-    fn from_bytes(data: &[u8], position: usize) -> io::Result<Self> {
-        (&data[position..]).read_be()
+        Ok(single((&data[position..]).read_be()?))
     }
 }
