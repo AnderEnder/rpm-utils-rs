@@ -197,58 +197,95 @@ where
     }
 
     pub fn write<W: Write>(&self, fh: &mut W) -> io::Result<()> {
-        for (_, value) in &self.0 {
+        let mut current = 0_usize;
+        for (tag, value) in &self.0 {
             match value {
-                RType::Null => {}
+                RType::Null => {
+                    let index = Index::from(tag, value, 0, 1);
+                }
                 RType::Char(c) => {
-                    fh.write_be(*c as u32)?;
+                    let position = fh.write_be(*c as u32)?;
+                    let index = Index::from(tag, value, current, 1);
+                    current += position;
                 }
                 RType::Int8(i) => {
-                    fh.write_be(*i)?;
+                    let position = fh.write_be(*i)?;
+                    let index = Index::from(tag, value, current, 1);
+                    current += position;
                 }
                 RType::Int16(i) => {
-                    fh.write_be(*i)?;
+                    let position = fh.write_be(*i)?;
+                    let index = Index::from(tag, value, current, 1);
+                    current += position;
                 }
                 RType::Int32(i) => {
-                    fh.write_be(*i)?;
+                    let position = fh.write_be(*i)?;
+                    let index = Index::from(tag, value, current, 1);
+                    current += position;
                 }
+
                 RType::Int64(i) => {
-                    fh.write_be(*i)?;
+                    let position = fh.write_be(*i)?;
+                    let index = Index::from(tag, value, current, 1);
+                    current += position;
                 }
+
                 RType::String(s) => {
                     fh.write_all(s.as_bytes())?;
+                    fh.write_be(0_u8)?;
+                    let index = Index::from(tag, value, current, 1);
+                    current += s.as_bytes().len() + 1;
                 }
+
                 RType::Bin(b) => {
                     fh.write_all(b)?;
+                    let index = Index::from(tag, value, current, 1);
+                    current += b.len();
                 }
+
                 RType::StringArray(vector) => {
+                    let index = Index::from(tag, value, current, vector.len());
                     for s in vector {
                         fh.write_all(s.as_bytes())?;
                         fh.write_be(0_u8)?;
+                        current += s.as_bytes().len() + 1;
                     }
                 }
+
                 RType::I18nstring(s) => {
                     fh.write_all(s.as_bytes())?;
                     fh.write_be(0_u8)?;
+                    let index = Index::from(tag, value, current, 1);
+                    current += s.as_bytes().len() + 1;
                 }
+
                 RType::Int8Array(vector) => {
+                    let index = Index::from(tag, value, current, vector.len());
                     for value in vector {
-                        fh.write_be(*value)?;
+                        let position = fh.write_be(*value)?;
+                        current += position;
                     }
                 }
+
                 RType::Int16Array(vector) => {
+                    let index = Index::from(tag, value, current, vector.len());
                     for value in vector {
-                        fh.write_be(*value)?;
+                        let position = fh.write_be(*value)?;
+                        current += position;
                     }
                 }
                 RType::Int32Array(vector) => {
+                    let index = Index::from(tag, value, current, vector.len());
                     for value in vector {
-                        fh.write_be(*value)?;
+                        let position = fh.write_be(*value)?;
+                        current += position;
                     }
                 }
                 RType::Int64Array(vector) => {
+                    let index = Index::from(tag, value, current, vector.len());
                     for value in vector {
-                        fh.write_be(*value)?;
+                        let position = fh.write_be(*value)?;
+                        current += position;
                     }
                 }
             }

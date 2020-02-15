@@ -20,6 +20,12 @@ pub enum Type {
     I18nstring = 9,
 }
 
+impl Default for Type {
+    fn default() -> Self {
+        Type::Null
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum RType {
     Null,
@@ -228,7 +234,7 @@ impl TryFrom<RType> for Vec<u64> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Index<T> {
     pub tag: T,
     pub itype: Type,
@@ -279,6 +285,30 @@ where
         fh.write_be(self.offset)?;
         fh.write_be(self.count)?;
         Ok(())
+    }
+}
+
+impl<T: Copy> Index<T> {
+    pub fn from(tag: &T, rtype: &RType, offset: usize, count: usize) -> Self {
+        let itype = match rtype {
+            RType::Null => Type::Null,
+            RType::Char(_) => Type::Char,
+            RType::Int8(_) | RType::Int8Array(_) => Type::Int8,
+            RType::Int16(_) | RType::Int16Array(_) => Type::Int16,
+            RType::Int32(_) | RType::Int32Array(_) => Type::Int32,
+            RType::Int64(_) | RType::Int64Array(_) => Type::Int64,
+            RType::String(_) => Type::String,
+            RType::Bin(_) => Type::String,
+            RType::StringArray(_) => Type::StringArray,
+            RType::I18nstring(_) => Type::I18nstring,
+        };
+
+        Index {
+            itype,
+            tag: *tag,
+            offset,
+            count,
+        }
     }
 }
 
