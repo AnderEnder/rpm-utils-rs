@@ -195,101 +195,122 @@ where
             .collect::<io::Result<HashMap<_, _>>>()?;
         Ok(Tags(tags))
     }
+}
+pub trait TagsWriter {
+    fn write_tags<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: Tags<T>) -> io::Result<()>;
+}
 
-    pub fn write<W: Write>(&self, fh: &mut W) -> io::Result<()> {
-        let mut current = 0_usize;
-        for (tag, value) in &self.0 {
+impl<W> TagsWriter for W
+where
+    W: Write,
+{
+    fn write_tags<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: Tags<T>) -> io::Result<()> {
+        let mut address: Vec<u8> = Vec::new();
+        let mut data: Vec<u8> = Vec::new();
+
+        for (tag, value) in &tags.0 {
+            let current = data.len();
             match value {
                 RType::Null => {
                     let index = Index::from(tag, value, 0, 1);
+                    address.write_index(index)?;
                 }
+
                 RType::Char(c) => {
-                    let position = fh.write_be(*c as u32)?;
+                    data.write_be(*c as u32)?;
                     let index = Index::from(tag, value, current, 1);
-                    current += position;
+                    address.write_index(index)?;
                 }
+
                 RType::Int8(i) => {
-                    let position = fh.write_be(*i)?;
+                    data.write_be(*i)?;
                     let index = Index::from(tag, value, current, 1);
-                    current += position;
+                    address.write_index(index)?;
                 }
+
                 RType::Int16(i) => {
-                    let position = fh.write_be(*i)?;
+                    data.write_be(*i)?;
                     let index = Index::from(tag, value, current, 1);
-                    current += position;
+                    address.write_index(index)?;
                 }
+
                 RType::Int32(i) => {
-                    let position = fh.write_be(*i)?;
+                    data.write_be(*i)?;
                     let index = Index::from(tag, value, current, 1);
-                    current += position;
+                    address.write_index(index)?;
                 }
 
                 RType::Int64(i) => {
-                    let position = fh.write_be(*i)?;
+                    data.write_be(*i)?;
                     let index = Index::from(tag, value, current, 1);
-                    current += position;
+                    address.write_index(index)?;
                 }
 
                 RType::String(s) => {
-                    fh.write_all(s.as_bytes())?;
-                    fh.write_be(0_u8)?;
+                    data.write_all(s.as_bytes())?;
+                    data.write_be(0_u8)?;
                     let index = Index::from(tag, value, current, 1);
-                    current += s.as_bytes().len() + 1;
+                    address.write_index(index)?;
                 }
 
                 RType::Bin(b) => {
-                    fh.write_all(b)?;
+                    data.write_all(b)?;
                     let index = Index::from(tag, value, current, 1);
-                    current += b.len();
+                    address.write_index(index)?;
                 }
 
                 RType::StringArray(vector) => {
                     let index = Index::from(tag, value, current, vector.len());
+                    address.write_index(index)?;
                     for s in vector {
-                        fh.write_all(s.as_bytes())?;
-                        fh.write_be(0_u8)?;
-                        current += s.as_bytes().len() + 1;
+                        data.write_all(s.as_bytes())?;
+                        data.write_be(0_u8)?;
                     }
                 }
 
                 RType::I18nstring(s) => {
-                    fh.write_all(s.as_bytes())?;
-                    fh.write_be(0_u8)?;
+                    data.write_all(s.as_bytes())?;
+                    data.write_be(0_u8)?;
                     let index = Index::from(tag, value, current, 1);
-                    current += s.as_bytes().len() + 1;
+                    address.write_index(index)?;
                 }
 
                 RType::Int8Array(vector) => {
                     let index = Index::from(tag, value, current, vector.len());
+                    address.write_index(index)?;
                     for value in vector {
-                        let position = fh.write_be(*value)?;
-                        current += position;
+                        data.write_be(*value)?;
                     }
                 }
 
                 RType::Int16Array(vector) => {
                     let index = Index::from(tag, value, current, vector.len());
+                    address.write_index(index)?;
                     for value in vector {
-                        let position = fh.write_be(*value)?;
-                        current += position;
+                        data.write_be(*value)?;
                     }
                 }
+
                 RType::Int32Array(vector) => {
                     let index = Index::from(tag, value, current, vector.len());
+                    address.write_index(index)?;
                     for value in vector {
-                        let position = fh.write_be(*value)?;
-                        current += position;
+                        data.write_be(*value)?;
                     }
                 }
+
                 RType::Int64Array(vector) => {
                     let index = Index::from(tag, value, current, vector.len());
+                    address.write_index(index)?;
                     for value in vector {
-                        let position = fh.write_be(*value)?;
-                        current += position;
+                        data.write_be(*value)?;
                     }
                 }
             }
         }
+
+        self.write_all(&address)?;
+        self.write_all(&data)?;
 
         Ok(())
     }

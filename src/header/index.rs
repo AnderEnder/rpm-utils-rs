@@ -6,7 +6,7 @@ use std::io;
 use std::io::{Read, Seek, Write};
 use strum_macros::Display;
 
-#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display)]
+#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display, Clone)]
 pub enum Type {
     Null = 0,
     Char = 1,
@@ -234,7 +234,7 @@ impl TryFrom<RType> for Vec<u64> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct Index<T> {
     pub tag: T,
     pub itype: Type,
@@ -244,9 +244,9 @@ pub struct Index<T> {
 
 impl<T> Index<T>
 where
-    T: FromPrimitive + Default + ToPrimitive,
+    T: FromPrimitive + Default,
 {
-    pub fn read<R: Read + Seek>(fh: &mut R) -> io::Result<Self> {
+    pub fn read<R: Read>(fh: &mut R) -> io::Result<Self> {
         let tag_id: u32 = fh.read_be()?;
         let tag = T::from_u32(tag_id).unwrap_or_else(|| {
             println!("Unknown tag {}", tag_id);
@@ -269,21 +269,30 @@ where
             count: count as usize,
         })
     }
+}
 
-    pub fn write<W: Write>(&self, fh: &mut W) -> io::Result<()> {
-        let tag_id = self
+pub trait IndexWriter {
+    fn write_index<T: ToPrimitive>(&mut self, index: Index<T>) -> io::Result<()>;
+}
+
+impl<W> IndexWriter for W
+where
+    W: Write,
+{
+    fn write_index<T: ToPrimitive>(&mut self, index: Index<T>) -> io::Result<()> {
+        let tag_id = index
             .tag
             .to_u32()
             .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Error: tag id is not correct"))?;
-        fh.write_be(tag_id)?;
+        self.write_be(tag_id)?;
 
-        let itype = self.itype.to_u32().ok_or_else(|| {
+        let itype = index.itype.to_u32().ok_or_else(|| {
             io::Error::new(io::ErrorKind::Other, "Error: tag type is not defined")
         })?;
-        fh.write_be(itype)?;
+        self.write_be(itype)?;
 
-        fh.write_be(self.offset)?;
-        fh.write_be(self.count)?;
+        self.write_be(index.offset as u32)?;
+        self.write_be(index.count as u32)?;
         Ok(())
     }
 }
@@ -311,14 +320,13 @@ impl<T: Copy> Index<T> {
         }
     }
 }
-
 pub struct IndexArray;
 
 impl IndexArray {
     pub fn read<R, T>(fh: &mut R, nindex: usize) -> io::Result<Vec<Index<T>>>
     where
         R: Read + Seek,
-        T: FromPrimitive + ToPrimitive + Default,
+        T: FromPrimitive + Default,
     {
         let mut indexes = Vec::with_capacity(nindex);
         for _ in 0..nindex {
@@ -329,16 +337,29 @@ impl IndexArray {
         indexes.sort_by_key(|k| k.offset);
         Ok(indexes)
     }
+}
 
-    pub fn write<W, T>(indexes: Vec<Index<T>>, fh: &mut W) -> io::Result<()>
-    where
-        W: Write,
-        T: FromPrimitive + ToPrimitive + Default,
-    {
-        for index in &indexes {
-            index.write(fh)?;
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::header::tags::*;
+    use std::io::Cursor;
 
-        Ok(())
+    #[test]
+    fn test_index_read_write_smoke() {
+        let index = Index {
+            itype: Type::Int32,
+            tag: Tag::BuildTime,
+            offset: 10,
+            count: 11,
+        };
+
+        let mut data: Vec<u8> = Vec::new();
+        data.write_index(index.clone()).unwrap();
+
+        let mut cursor = Cursor::new(data);
+        let index2 = Index::read(&mut cursor).unwrap();
+
+        assert_eq!(index, index2);
     }
 }

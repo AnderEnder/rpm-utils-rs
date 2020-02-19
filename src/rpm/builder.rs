@@ -2,6 +2,7 @@ use chrono::Utc;
 use gethostname::gethostname;
 use std::ffi::OsString;
 use std::fs::OpenOptions;
+use std::io;
 
 use super::info::RPMInfo;
 
@@ -180,12 +181,11 @@ impl RPMBuilder {
         self
     }
 
-    pub fn build(self) {
+    pub fn build(self) -> io::Result<()> {
         let mut writer = OpenOptions::new()
             .create(true)
             .write(true)
-            .open(self.filename.unwrap())
-            .unwrap();
+            .open(self.filename.unwrap())?;
 
         let info = RPMInfo {
             name: self.package_name.unwrap_or_default(),
@@ -195,6 +195,8 @@ impl RPMBuilder {
         };
 
         let rpm = info.into_rpm(writer);
+
+        Ok(())
     }
 }
 
