@@ -44,8 +44,9 @@ where
         }
     }
 
-    pub fn insert(&mut self, key: T, value: RType) {
+    pub fn insert(&mut self, key: T, value: RType) -> &mut Self {
         self.0.insert(key, value);
+        self
     }
 
     pub fn get_as_string(&self, name: T) -> String {

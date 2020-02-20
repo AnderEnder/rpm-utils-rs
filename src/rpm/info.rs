@@ -129,28 +129,29 @@ impl RPMInfo {
         let mut signature_tags = Tags::<SignatureTag>::new();
         let mut header_tags = Tags::<Tag>::new();
 
-        header_tags.insert(Tag::Name, RType::String(self.name));
-        header_tags.insert(Tag::Epoch, RType::Int8(self.epoch));
-        header_tags.insert(Tag::Version, RType::String(self.version));
-        header_tags.insert(Tag::Arch, RType::String(self.arch));
-        header_tags.insert(Tag::Group, RType::String(self.group));
-        header_tags.insert(Tag::Size, RType::Int64(self.size));
-        header_tags.insert(Tag::License, RType::String(self.license));
-        header_tags.insert(Tag::SourceRpm, RType::String(self.source_rpm));
-        header_tags.insert(
-            Tag::BuildTime,
-            RType::Int64(self.build_time.try_into().unwrap()),
-        );
-        header_tags.insert(Tag::BuildHost, RType::String(self.build_host));
-        header_tags.insert(Tag::Summary, RType::String(self.summary));
-        header_tags.insert(Tag::Description, RType::String(self.description));
+        header_tags
+            .insert(Tag::Name, RType::String(self.name))
+            .insert(Tag::Epoch, RType::Int8(self.epoch))
+            .insert(Tag::Version, RType::String(self.version))
+            .insert(Tag::Arch, RType::String(self.arch))
+            .insert(Tag::Group, RType::String(self.group))
+            .insert(Tag::Size, RType::Int64(self.size))
+            .insert(Tag::License, RType::String(self.license))
+            .insert(Tag::SourceRpm, RType::String(self.source_rpm))
+            .insert(
+                Tag::BuildTime,
+                RType::Int64(self.build_time.try_into().unwrap()),
+            )
+            .insert(Tag::BuildHost, RType::String(self.build_host))
+            .insert(Tag::Summary, RType::String(self.summary))
+            .insert(Tag::Description, RType::String(self.description))
+            .insert(Tag::PayloadFormat, RType::String(self.payload.format))
+            .insert(
+                Tag::PayloadCompressor,
+                RType::String(self.payload.compressor),
+            )
+            .insert(Tag::PayloadFlags, RType::String(self.payload.flags));
 
         signature_tags.insert(SignatureTag::PayloadSize, RType::Int64(self.payload.size));
-        header_tags.insert(Tag::PayloadFormat, RType::String(self.payload.format));
-        header_tags.insert(
-            Tag::PayloadCompressor,
-            RType::String(self.payload.compressor),
-        );
-        header_tags.insert(Tag::PayloadFlags, RType::String(self.payload.flags));
     }
 }
