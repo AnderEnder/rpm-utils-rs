@@ -15,7 +15,7 @@ use std::hash::Hash;
 use std::io::{self, Read, Seek, Write};
 use std::mem::size_of;
 
-use crate::utils::{parse_string, parse_strings};
+use crate::utils::{align_n_bytes, parse_string, parse_strings};
 
 #[derive(Debug, Default)]
 pub struct Tags<T>(pub HashMap<T, RType>)
@@ -197,17 +197,18 @@ where
         Ok(Tags(tags))
     }
 }
-pub trait TagsWriter {
-    fn write_tags<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: Tags<T>) -> io::Result<()>;
+pub trait TagsWrite {
+    fn write_header<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: Tags<T>) -> io::Result<()>;
 }
 
-impl<W> TagsWriter for W
+impl<W> TagsWrite for W
 where
     W: Write,
 {
-    fn write_tags<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: Tags<T>) -> io::Result<()> {
+    fn write_header<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: Tags<T>) -> io::Result<()> {
         let mut address: Vec<u8> = Vec::new();
         let mut data: Vec<u8> = Vec::new();
+        let index = tags.0.len();
 
         for (tag, value) in &tags.0 {
             let current = data.len();
@@ -310,8 +311,17 @@ where
             }
         }
 
+        let size = data.len() as u32;
+        let lead = HeaderLead::from(index, size);
+
+        lead.write(self)?;
         self.write_all(&address)?;
         self.write_all(&data)?;
+
+        // aligning to 8 bytes
+        let number = align_n_bytes(size, 8) as usize;
+        let pad = vec![0_u8; number];
+        self.write_all(&pad)?;
 
         Ok(())
     }

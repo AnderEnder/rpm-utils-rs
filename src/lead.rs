@@ -9,12 +9,13 @@ use crate::utils::parse_string;
 
 pub const MAGIC: [u8; 4] = [237, 171, 238, 219];
 
-#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display)]
+#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display, Clone)]
 pub enum Type {
     Binary = 0,
     Source = 1,
 }
 
+#[derive(Clone)]
 pub struct Lead {
     pub magic: [u8; 4],
     pub major: u8,
@@ -146,5 +147,15 @@ impl Default for Lead {
             signature_type: 0,
             reserved: [0; 16],
         }
+    }
+}
+
+pub trait LeadWriter {
+    fn write_lead(&mut self, lead: Lead) -> io::Result<()>;
+}
+
+impl<W: Write> LeadWriter for W {
+    fn write_lead(&mut self, lead: Lead) -> io::Result<()> {
+        lead.write(self)
     }
 }

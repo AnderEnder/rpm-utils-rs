@@ -37,6 +37,15 @@ impl HeaderLead {
         })
     }
 
+    pub fn from(nindex: usize, hsize: u32) -> Self {
+        Self {
+            magic: MAGIC_HEADER,
+            reserved: [0_u8; 4],
+            nindex,
+            hsize,
+        }
+    }
+
     pub fn write<W: Write>(&self, fh: &mut W) -> io::Result<()> {
         fh.write_all(&MAGIC_HEADER)?;
         fh.write_all(&self.reserved)?;
