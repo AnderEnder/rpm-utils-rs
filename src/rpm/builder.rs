@@ -154,8 +154,9 @@ impl RPMBuilder {
     }
 
     pub fn add_files(mut self, files: Vec<&str>) -> Self {
-        let files_vec: Vec<String> = files.into_iter().map(|x| x.to_owned()).collect();
-        self.files.extend_from_slice(&files_vec);
+        for file in &files {
+            self.files.push((*file).to_owned());
+        }
         self
     }
 
