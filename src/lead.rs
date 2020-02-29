@@ -151,11 +151,11 @@ impl Default for Lead {
 }
 
 pub trait LeadWriter {
-    fn write_lead(&mut self, lead: Lead) -> io::Result<()>;
+    fn write_lead(&mut self, lead: &Lead) -> io::Result<()>;
 }
 
 impl<W: Write> LeadWriter for W {
-    fn write_lead(&mut self, lead: Lead) -> io::Result<()> {
+    fn write_lead(&mut self, lead: &Lead) -> io::Result<()> {
         lead.write(self)
     }
 }

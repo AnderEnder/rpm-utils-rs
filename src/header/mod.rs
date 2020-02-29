@@ -198,14 +198,18 @@ where
     }
 }
 pub trait TagsWrite {
-    fn write_header<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: Tags<T>) -> io::Result<()>;
+    fn write_header<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: &Tags<T>)
+        -> io::Result<()>;
 }
 
 impl<W> TagsWrite for W
 where
     W: Write,
 {
-    fn write_header<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: Tags<T>) -> io::Result<()> {
+    fn write_header<T: ToPrimitive + Eq + Hash + Copy>(
+        &mut self,
+        tags: &Tags<T>,
+    ) -> io::Result<()> {
         let mut address: Vec<u8> = Vec::new();
         let mut data: Vec<u8> = Vec::new();
         let index = tags.0.len();

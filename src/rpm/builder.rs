@@ -195,7 +195,7 @@ impl RPMBuilder {
             ..Default::default()
         };
 
-        let rpm = info.into_rpm(writer);
+        let rpm = info.into_rpm(&mut writer);
 
         Ok(())
     }

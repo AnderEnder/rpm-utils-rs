@@ -2,7 +2,7 @@ use chrono::{Local, TimeZone};
 use itertools::multizip;
 use std::convert::TryInto;
 use std::fmt;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 
 use super::file::RPMFile;
 use crate::header::{RType, SignatureTag, Tag, Tags};
@@ -125,7 +125,7 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
 }
 
 impl RPMInfo {
-    pub fn into_rpm<T: Write>(self, writer: T) {
+    pub fn into_rpm<T: Write>(self, writer: T) -> RPMFile<T> {
         let lead = Lead::from(&self);
         let mut signature_tags = Tags::<SignatureTag>::new();
         let mut header_tags = Tags::<Tag>::new();
@@ -154,17 +154,21 @@ impl RPMInfo {
             .insert(Tag::PayloadFlags, RType::String(self.payload.flags));
 
         signature_tags.insert(SignatureTag::PayloadSize, RType::Int64(self.payload.size));
+
+        RPMFile {
+            lead,
+            header_tags,
+            signature_tags,
+            payload_offset: 0,
+            file: writer,
+        }
     }
 }
 
 impl From<&RPMInfo> for Lead {
     fn from(info: &RPMInfo) -> Self {
         let mut name = [0_u8; 66];
-        info.name
-            .as_bytes()
-            .iter()
-            .enumerate()
-            .for_each(|(i, x)| name[i] = *x);
+        info.name.as_bytes().read(&mut name).unwrap();
 
         Self {
             major: 4,
