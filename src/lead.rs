@@ -144,7 +144,7 @@ impl Default for Lead {
             archnum: 0,
             name: [0; 66],
             osnum: 0,
-            signature_type: 0,
+            signature_type: 5,
             reserved: [0; 16],
         }
     }

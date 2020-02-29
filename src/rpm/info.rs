@@ -6,8 +6,8 @@ use std::io::{Read, Write};
 
 use super::file::RPMFile;
 use crate::header::{RType, SignatureTag, Tag, Tags};
-use crate::payload::FileInfo;
-use crate::payload::RPMPayload;
+use crate::lead::Lead;
+use crate::payload::{FileInfo, RPMPayload};
 
 #[derive(Debug, Default)]
 pub struct RPMInfo {
@@ -126,6 +126,7 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
 
 impl RPMInfo {
     pub fn into_rpm<T: Write>(self, writer: T) {
+        let lead = Lead::from(&self);
         let mut signature_tags = Tags::<SignatureTag>::new();
         let mut header_tags = Tags::<Tag>::new();
 
@@ -153,5 +154,23 @@ impl RPMInfo {
             .insert(Tag::PayloadFlags, RType::String(self.payload.flags));
 
         signature_tags.insert(SignatureTag::PayloadSize, RType::Int64(self.payload.size));
+    }
+}
+
+impl From<&RPMInfo> for Lead {
+    fn from(info: &RPMInfo) -> Self {
+        let mut name = [0_u8; 66];
+        info.name
+            .as_bytes()
+            .iter()
+            .enumerate()
+            .for_each(|(i, x)| name[i] = *x);
+
+        Self {
+            major: 4,
+            minor: 3,
+            name,
+            ..Default::default()
+        }
     }
 }
