@@ -1,9 +1,10 @@
 use chrono::Utc;
 use gethostname::gethostname;
 use std::ffi::OsString;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io;
 
+use super::file::RPMFile;
 use super::info::RPMInfo;
 
 struct InnerPath {
@@ -182,8 +183,8 @@ impl RPMBuilder {
         self
     }
 
-    pub fn build(self) -> io::Result<()> {
-        let mut writer = OpenOptions::new()
+    pub fn build(self) -> io::Result<RPMFile<File>> {
+        let writer = OpenOptions::new()
             .create(true)
             .write(true)
             .open(self.filename.unwrap())?;
@@ -195,9 +196,7 @@ impl RPMBuilder {
             ..Default::default()
         };
 
-        let rpm = info.into_rpm(&mut writer);
-
-        Ok(())
+        Ok(info.into_rpm(writer))
     }
 }
 
@@ -206,7 +205,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_builder_smoke() {
-        let rpm = RPMBuilder::new()
+        let mut rpm = RPMBuilder::new()
             .package_name("Test")
             .description("Test Package")
             .summary("Test Package")
@@ -214,6 +213,10 @@ mod tests {
             .release("1234")
             .epoch(1)
             .arch("noarch")
-            .compression("gzip");
+            .compression("gzip")
+            .build()
+            .unwrap();
+
+        rpm.write_head().unwrap();
     }
 }

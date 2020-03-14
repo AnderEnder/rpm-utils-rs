@@ -92,10 +92,10 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
 }
 
 impl<T: 'static + Write> RPMFile<T> {
-    pub fn write_head(&self, mut writer: T) -> io::Result<()> {
-        writer.write_lead(&self.lead)?;
-        writer.write_header(&self.signature_tags)?;
-        writer.write_header(&self.header_tags)?;
+    pub fn write_head(&mut self) -> io::Result<()> {
+        self.file.write_lead(&self.lead)?;
+        self.file.write_header(&self.signature_tags)?;
+        self.file.write_header(&self.header_tags)?;
         Ok(())
     }
 
