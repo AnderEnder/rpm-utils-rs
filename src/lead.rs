@@ -138,8 +138,8 @@ impl Default for Lead {
     fn default() -> Self {
         Lead {
             magic: MAGIC,
-            major: 0,
-            minor: 0,
+            major: 3,
+            minor: 1,
             rpm_type: Type::Binary,
             archnum: 0,
             name: [0; 66],
@@ -150,6 +150,21 @@ impl Default for Lead {
     }
 }
 
+impl PartialEq for Lead {
+    fn eq(&self, other: &Self) -> bool {
+        self.magic == other.magic
+            && self.minor == other.minor
+            && self.rpm_type == other.rpm_type
+            && self.archnum == other.archnum
+            && self.osnum == other.osnum
+            && self.signature_type == other.signature_type
+            && self.reserved == other.reserved
+            && self.name.to_vec() == other.name.to_vec()
+            && self.reserved == self.reserved
+            && self.magic == self.magic
+    }
+}
+
 pub trait LeadWriter {
     fn write_lead(&mut self, lead: &Lead) -> io::Result<()>;
 }
@@ -157,5 +172,30 @@ pub trait LeadWriter {
 impl<W: Write> LeadWriter for W {
     fn write_lead(&mut self, lead: &Lead) -> io::Result<()> {
         lead.write(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_lead_read_write_smoke() {
+        let mut name = [0_u8; 66];
+        "testname".as_bytes().read(&mut name).unwrap();
+
+        let lead = Lead {
+            name,
+            ..Default::default()
+        };
+
+        let mut data: Vec<u8> = Vec::new();
+        lead.write(&mut data).unwrap();
+
+        let mut cursor = Cursor::new(data);
+        let lead2 = Lead::read(&mut cursor).unwrap();
+
+        assert_eq!(lead, lead2);
     }
 }

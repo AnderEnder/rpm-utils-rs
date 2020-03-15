@@ -184,10 +184,10 @@ impl RPMBuilder {
     }
 
     pub fn build(self) -> io::Result<RPMFile<File>> {
-        let writer = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(self.filename.unwrap())?;
+        let writer = OpenOptions::new().create(true).write(true).open(
+            self.filename
+                .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No rpm file is defined"))?,
+        )?;
 
         let mut file_infos: Vec<FileInfo> = Vec::new();
 

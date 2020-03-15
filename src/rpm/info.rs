@@ -171,8 +171,8 @@ impl From<&RPMInfo> for Lead {
         info.name.as_bytes().read(&mut name).unwrap();
 
         Self {
-            major: 4,
-            minor: 3,
+            major: 3,
+            minor: 1,
             name,
             ..Default::default()
         }
