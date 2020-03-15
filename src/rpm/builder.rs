@@ -1,11 +1,11 @@
 use chrono::Utc;
 use gethostname::gethostname;
-use std::ffi::OsString;
 use std::fs::{File, OpenOptions};
 use std::io;
 
 use super::file::RPMFile;
 use super::info::RPMInfo;
+use crate::payload::{FileInfo, RPMPayload};
 
 struct InnerPath {
     path: String,
@@ -26,7 +26,7 @@ pub struct RPMBuilder {
     license: Option<String>,
     source_rpm: Option<String>,
     build_time: i64,
-    build_host: OsString,
+    build_host: String,
     summary: Option<String>,
     description: Option<String>,
     packager: Option<String>,
@@ -51,7 +51,7 @@ impl RPMBuilder {
             epoch: 0,
             release: "1".to_owned(),
             arch: "noarch".to_owned(),
-            build_host: gethostname(),
+            build_host: gethostname().into_string().unwrap(),
             build_time,
             default_user: "root".to_owned(),
             default_group: "root".to_owned(),
@@ -121,7 +121,7 @@ impl RPMBuilder {
     }
 
     pub fn build_host(mut self, build_host: &str) -> Self {
-        self.build_host = OsString::from(build_host);
+        self.build_host = build_host.to_owned();
         self
     }
 
@@ -189,10 +189,35 @@ impl RPMBuilder {
             .write(true)
             .open(self.filename.unwrap())?;
 
+        let mut file_infos: Vec<FileInfo> = Vec::new();
+
+        for file in self.files {
+            file_infos.push(FileInfo {
+                name: file,
+                ..Default::default()
+            });
+        }
+
         let info = RPMInfo {
             name: self.package_name.unwrap_or_default(),
             epoch: self.epoch,
             version: self.version.unwrap_or_default(),
+            release: self.release,
+            arch: self.arch,
+            group: self.package_group.unwrap_or_default(),
+            license: self.license.unwrap_or_default(),
+            source_rpm: self.source_rpm.unwrap_or_default(),
+            build_time: self.build_time,
+            build_host: self.build_host,
+            summary: self.summary.unwrap_or_default(),
+            description: self.description.unwrap_or_default(),
+            payload: RPMPayload {
+                size: 0,
+                format: "cpio".to_owned(),
+                compressor: self.compression,
+                flags: "6".to_owned(),
+                files: file_infos,
+            },
             ..Default::default()
         };
 
@@ -214,6 +239,7 @@ mod tests {
             .epoch(1)
             .arch("noarch")
             .compression("gzip")
+            .filename("test.rpm")
             .build()
             .unwrap();
 

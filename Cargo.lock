@@ -295,6 +295,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "rpm-utils"
 version = "0.1.0"
 dependencies = [
+ "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "bzip2 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "filetime 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",

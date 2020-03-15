@@ -2,7 +2,7 @@ use chrono::{Local, TimeZone};
 use itertools::multizip;
 use std::convert::TryInto;
 use std::fmt;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 
 use super::file::RPMFile;
 use crate::header::{RType, SignatureTag, Tag, Tags};
