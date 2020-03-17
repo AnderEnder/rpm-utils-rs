@@ -1,5 +1,4 @@
 use chrono::Utc;
-use gethostname::gethostname;
 use std::fs::{File, OpenOptions};
 use std::io;
 
@@ -51,7 +50,7 @@ impl RPMBuilder {
             epoch: 0,
             release: "1".to_owned(),
             arch: "noarch".to_owned(),
-            build_host: gethostname().into_string().unwrap(),
+            build_host: hostname::get().unwrap().into_string().unwrap(),
             build_time,
             default_user: "root".to_owned(),
             default_group: "root".to_owned(),
