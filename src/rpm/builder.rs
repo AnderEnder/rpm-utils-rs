@@ -1,6 +1,8 @@
 use chrono::Utc;
+use std::convert::AsRef;
 use std::fs::{File, OpenOptions};
 use std::io;
+use std::path::{Path, PathBuf};
 
 use super::file::RPMFile;
 use super::info::RPMInfo;
@@ -15,7 +17,7 @@ struct InnerPath {
 
 #[derive(Debug, Default)]
 pub struct RPMBuilder {
-    filename: Option<String>,
+    filename: Option<PathBuf>,
     package_name: Option<String>,
     version: Option<String>,
     release: String,
@@ -59,8 +61,8 @@ impl RPMBuilder {
         }
     }
 
-    pub fn filename(mut self, file: &str) -> Self {
-        self.filename = Some(file.to_owned());
+    pub fn filename<P: AsRef<Path>>(mut self, file: P) -> Self {
+        self.filename = Some(file.as_ref().to_owned());
         self
     }
 
@@ -166,8 +168,9 @@ impl RPMBuilder {
     }
 
     pub fn add_directories(mut self, dirs: Vec<&str>) -> Self {
-        let dirs_vec: Vec<String> = dirs.into_iter().map(|x| x.to_owned()).collect();
-        self.directories.extend_from_slice(&dirs_vec);
+        for dir in dirs.into_iter() {
+            self.directories.push(dir.to_owned());
+        }
         self
     }
 
@@ -176,17 +179,19 @@ impl RPMBuilder {
         self
     }
 
-    pub fn add_links(mut self, dirs: Vec<&str>) -> Self {
-        let links_vec: Vec<String> = dirs.into_iter().map(|x| x.to_owned()).collect();
-        self.links.extend_from_slice(&links_vec);
+    pub fn add_links(mut self, links: Vec<&str>) -> Self {
+        for link in links.into_iter() {
+            self.links.push(link.to_owned());
+        }
         self
     }
 
     pub fn build(self) -> io::Result<RPMFile<File>> {
-        let writer = OpenOptions::new().create(true).write(true).open(
-            self.filename
-                .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No rpm file is defined"))?,
-        )?;
+        let filename = self
+            .filename
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No rpm file is defined"))?;
+
+        let writer = OpenOptions::new().create(true).write(true).open(filename)?;
 
         let mut file_infos: Vec<FileInfo> = Vec::new();
 
@@ -227,8 +232,12 @@ impl RPMBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
     #[test]
     fn test_builder_smoke() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("test.rpm");
+
         let mut rpm = RPMBuilder::new()
             .package_name("Test")
             .description("Test Package")
@@ -238,7 +247,7 @@ mod tests {
             .epoch(1)
             .arch("noarch")
             .compression("gzip")
-            .filename("test.rpm")
+            .filename(file)
             .build()
             .unwrap();
 
