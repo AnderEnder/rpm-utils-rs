@@ -1,12 +1,12 @@
 use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 use omnom::prelude::*;
 use std::convert::TryFrom;
 use std::io;
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, Write};
 use strum_macros::Display;
 
-#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display)]
+#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display, Clone)]
 pub enum Type {
     Null = 0,
     Char = 1,
@@ -18,6 +18,12 @@ pub enum Type {
     Bin = 7,
     StringArray = 8,
     I18nstring = 9,
+}
+
+impl Default for Type {
+    fn default() -> Self {
+        Type::Null
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -86,6 +92,15 @@ impl RType {
             RType::Int8(n) => Some(u32::from(*n)),
             RType::Int16(n) => Some(u32::from(*n)),
             RType::Int32(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            RType::Int8(n) => Some(i64::from(*n)),
+            RType::Int16(n) => Some(i64::from(*n)),
+            RType::Int32(n) => Some(i64::from(*n)),
             _ => None,
         }
     }
@@ -219,7 +234,7 @@ impl TryFrom<RType> for Vec<u64> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct Index<T> {
     pub tag: T,
     pub itype: Type,
@@ -231,7 +246,7 @@ impl<T> Index<T>
 where
     T: FromPrimitive + Default,
 {
-    pub fn read<R: Read + Seek>(fh: &mut R) -> Result<Self, io::Error> {
+    pub fn read<R: Read>(fh: &mut R) -> io::Result<Self> {
         let tag_id: u32 = fh.read_be()?;
         let tag = T::from_u32(tag_id).unwrap_or_else(|| {
             println!("Unknown tag {}", tag_id);
@@ -256,10 +271,59 @@ where
     }
 }
 
+pub trait IndexWriter {
+    fn write_index<T: ToPrimitive>(&mut self, index: Index<T>) -> io::Result<()>;
+}
+
+impl<W> IndexWriter for W
+where
+    W: Write,
+{
+    fn write_index<T: ToPrimitive>(&mut self, index: Index<T>) -> io::Result<()> {
+        let tag_id = index
+            .tag
+            .to_u32()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Error: tag id is not correct"))?;
+        self.write_be(tag_id)?;
+
+        let itype = index.itype.to_u32().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::Other, "Error: tag type is not defined")
+        })?;
+        self.write_be(itype)?;
+
+        self.write_be(index.offset as u32)?;
+        self.write_be(index.count as u32)?;
+        Ok(())
+    }
+}
+
+impl<T: Copy> Index<T> {
+    pub fn from(tag: &T, rtype: &RType, offset: usize, count: usize) -> Self {
+        let itype = match rtype {
+            RType::Null => Type::Null,
+            RType::Char(_) => Type::Char,
+            RType::Int8(_) | RType::Int8Array(_) => Type::Int8,
+            RType::Int16(_) | RType::Int16Array(_) => Type::Int16,
+            RType::Int32(_) | RType::Int32Array(_) => Type::Int32,
+            RType::Int64(_) | RType::Int64Array(_) => Type::Int64,
+            RType::String(_) => Type::String,
+            RType::Bin(_) => Type::String,
+            RType::StringArray(_) => Type::StringArray,
+            RType::I18nstring(_) => Type::I18nstring,
+        };
+
+        Index {
+            itype,
+            tag: *tag,
+            offset,
+            count,
+        }
+    }
+}
 pub struct IndexArray;
 
 impl IndexArray {
-    pub fn read<R, T>(fh: &mut R, nindex: usize) -> Result<Vec<Index<T>>, io::Error>
+    pub fn read<R, T>(fh: &mut R, nindex: usize) -> io::Result<Vec<Index<T>>>
     where
         R: Read + Seek,
         T: FromPrimitive + Default,
@@ -272,5 +336,30 @@ impl IndexArray {
 
         indexes.sort_by_key(|k| k.offset);
         Ok(indexes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::header::tags::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_index_read_write_smoke() {
+        let index = Index {
+            itype: Type::Int32,
+            tag: Tag::BuildTime,
+            offset: 10,
+            count: 11,
+        };
+
+        let mut data: Vec<u8> = Vec::new();
+        data.write_index(index.clone()).unwrap();
+
+        let mut cursor = Cursor::new(data);
+        let index2 = Index::read(&mut cursor).unwrap();
+
+        assert_eq!(index, index2);
     }
 }

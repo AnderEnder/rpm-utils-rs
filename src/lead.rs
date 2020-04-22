@@ -1,20 +1,21 @@
 use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 use omnom::prelude::*;
 use std::fmt;
-use std::io::{self, Read, Seek};
+use std::io::{self, Read, Seek, Write};
 use strum_macros::Display;
 
 use crate::utils::parse_string;
 
 pub const MAGIC: [u8; 4] = [237, 171, 238, 219];
 
-#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display)]
+#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display, Clone)]
 pub enum Type {
     Binary = 0,
     Source = 1,
 }
 
+#[derive(Clone)]
 pub struct Lead {
     pub magic: [u8; 4],
     pub major: u8,
@@ -83,6 +84,26 @@ impl Lead {
             reserved,
         })
     }
+
+    pub fn write<R: Write>(&self, fh: &mut R) -> io::Result<()> {
+        fh.write_all(&MAGIC)?;
+        fh.write_all(&[self.major, self.minor])?;
+
+        let rpm_type = self.rpm_type.to_u16().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::Other, "Error: rpm type is not correct")
+        })?;
+        fh.write_be(rpm_type)?;
+        fh.write_be(self.archnum)?;
+
+        fh.write_all(&self.name)?;
+
+        fh.write_be(self.osnum)?;
+        fh.write_be(self.signature_type)?;
+
+        // reserve
+        fh.write_all(&[0_u8; 16])?;
+        Ok(())
+    }
 }
 
 impl fmt::Display for Lead {
@@ -117,14 +138,64 @@ impl Default for Lead {
     fn default() -> Self {
         Lead {
             magic: MAGIC,
-            major: 0,
-            minor: 0,
+            major: 3,
+            minor: 1,
             rpm_type: Type::Binary,
             archnum: 0,
             name: [0; 66],
             osnum: 0,
-            signature_type: 0,
+            signature_type: 5,
             reserved: [0; 16],
         }
+    }
+}
+
+impl PartialEq for Lead {
+    fn eq(&self, other: &Self) -> bool {
+        self.magic == other.magic
+            && self.minor == other.minor
+            && self.rpm_type == other.rpm_type
+            && self.archnum == other.archnum
+            && self.osnum == other.osnum
+            && self.signature_type == other.signature_type
+            && self.reserved == other.reserved
+            && self.name.to_vec() == other.name.to_vec()
+            && self.reserved == self.reserved
+            && self.magic == self.magic
+    }
+}
+
+pub trait LeadWriter {
+    fn write_lead(&mut self, lead: &Lead) -> io::Result<()>;
+}
+
+impl<W: Write> LeadWriter for W {
+    fn write_lead(&mut self, lead: &Lead) -> io::Result<()> {
+        lead.write(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_lead_read_write_smoke() {
+        let mut name = [0_u8; 66];
+        "testname".as_bytes().read(&mut name).unwrap();
+
+        let lead = Lead {
+            name,
+            ..Default::default()
+        };
+
+        let mut data: Vec<u8> = Vec::new();
+        lead.write(&mut data).unwrap();
+
+        let mut cursor = Cursor::new(data);
+        let lead2 = Lead::read(&mut cursor).unwrap();
+
+        assert_eq!(lead, lead2);
     }
 }
