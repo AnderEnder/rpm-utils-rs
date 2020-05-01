@@ -5,8 +5,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::file::RPMFile;
-use super::info::RPMInfo;
-use crate::payload::{FileInfo, RPMPayload};
+use crate::payload::FileInfo;
+
+use crate::header::{SignatureTag, Tag, Tags};
+use crate::lead::Lead;
 
 struct InnerPath {
     path: String,
@@ -15,7 +17,7 @@ struct InnerPath {
     mode: u8,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct RPMBuilder {
     filename: Option<PathBuf>,
     package_name: Option<String>,
@@ -202,30 +204,38 @@ impl RPMBuilder {
             });
         }
 
-        let info = RPMInfo {
-            name: self.package_name.unwrap_or_default(),
-            epoch: self.epoch,
-            version: self.version.unwrap_or_default(),
-            release: self.release,
-            arch: self.arch,
-            group: self.package_group.unwrap_or_default(),
-            license: self.license.unwrap_or_default(),
-            source_rpm: self.source_rpm.unwrap_or_default(),
-            build_time: self.build_time,
-            build_host: self.build_host,
-            summary: self.summary.unwrap_or_default(),
-            description: self.description.unwrap_or_default(),
-            payload: RPMPayload {
-                size: 0,
-                format: "cpio".to_owned(),
-                compressor: self.compression,
-                flags: "6".to_owned(),
-                files: file_infos,
-            },
-            ..Default::default()
-        };
+        let package_name = self.package_name.clone().unwrap_or_default();
 
-        Ok(info.into_rpm(writer))
+        let mut header_tags = Tags::<Tag>::new();
+        header_tags
+            .insert_name(package_name.clone())
+            .insert_epoch(self.epoch)
+            .insert_version(self.version.unwrap_or_default())
+            .insert_arch(self.arch)
+            .insert_group(self.package_group.unwrap_or_default())
+            .insert_size(0)
+            .insert_license(self.license.unwrap_or_default())
+            .insert_source_rpm(self.source_rpm.unwrap_or_default())
+            .insert_build_time(self.build_time)
+            .insert_build_host(self.build_host)
+            .insert_summary(self.summary.unwrap_or_default())
+            .insert_description(self.description.unwrap_or_default())
+            .insert_payload_format("cpio".to_owned())
+            .insert_payload_compressor(self.compression)
+            .insert_payload_flags("6".to_owned());
+
+        let mut signature_tags = Tags::<SignatureTag>::new();
+        signature_tags.insert_payload_size(0);
+
+        let lead = Lead::from_str(package_name);
+
+        Ok(RPMFile {
+            lead,
+            header_tags,
+            signature_tags,
+            payload_offset: 0,
+            file: writer,
+        })
     }
 }
 
