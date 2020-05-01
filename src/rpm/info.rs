@@ -1,11 +1,10 @@
 use chrono::{Local, TimeZone};
 use itertools::multizip;
-use std::convert::TryInto;
 use std::fmt;
 use std::io::{Read, Write};
 
 use super::file::RPMFile;
-use crate::header::{RType, SignatureTag, Tag, Tags};
+use crate::header::{SignatureTag, Tag, Tags};
 use crate::lead::Lead;
 use crate::payload::{FileInfo, RPMPayload};
 
@@ -131,29 +130,23 @@ impl RPMInfo {
         let mut header_tags = Tags::<Tag>::new();
 
         header_tags
-            .insert(Tag::Name, RType::String(self.name))
-            .insert(Tag::Epoch, RType::Int8(self.epoch))
-            .insert(Tag::Version, RType::String(self.version))
-            .insert(Tag::Arch, RType::String(self.arch))
-            .insert(Tag::Group, RType::String(self.group))
-            .insert(Tag::Size, RType::Int64(self.size))
-            .insert(Tag::License, RType::String(self.license))
-            .insert(Tag::SourceRpm, RType::String(self.source_rpm))
-            .insert(
-                Tag::BuildTime,
-                RType::Int64(self.build_time.try_into().unwrap()),
-            )
-            .insert(Tag::BuildHost, RType::String(self.build_host))
-            .insert(Tag::Summary, RType::String(self.summary))
-            .insert(Tag::Description, RType::String(self.description))
-            .insert(Tag::PayloadFormat, RType::String(self.payload.format))
-            .insert(
-                Tag::PayloadCompressor,
-                RType::String(self.payload.compressor),
-            )
-            .insert(Tag::PayloadFlags, RType::String(self.payload.flags));
+            .insert_name(self.name)
+            .insert_epoch(self.epoch)
+            .insert_version(self.version)
+            .insert_arch(self.arch)
+            .insert_group(self.group)
+            .insert_size(self.size)
+            .insert_license(self.license)
+            .insert_source_rpm(self.source_rpm)
+            .insert_build_time(self.build_time)
+            .insert_build_host(self.build_host)
+            .insert_summary(self.summary)
+            .insert_description(self.description)
+            .insert_payload_format(self.payload.format)
+            .insert_payload_compressor(self.payload.compressor)
+            .insert_payload_flags(self.payload.flags);
 
-        signature_tags.insert(SignatureTag::PayloadSize, RType::Int64(self.payload.size));
+        signature_tags.insert_payload_size(self.payload.size);
 
         RPMFile {
             lead,

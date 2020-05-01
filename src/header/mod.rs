@@ -11,6 +11,7 @@ use omnom::prelude::*;
 use omnom::ReadBytes;
 use std::char;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::hash::Hash;
 use std::io::{self, Read, Seek, Write};
 use std::mem::size_of;
@@ -197,6 +198,75 @@ where
         Ok(Tags(tags))
     }
 }
+
+impl Tags<Tag> {
+    pub fn insert_name(&mut self, name: String) -> &mut Self {
+        self.insert(Tag::Name, RType::String(name))
+    }
+
+    pub fn insert_epoch(&mut self, epoch: u8) -> &mut Self {
+        self.insert(Tag::Epoch, RType::Int8(epoch))
+    }
+
+    pub fn insert_version(&mut self, version: String) -> &mut Self {
+        self.insert(Tag::Version, RType::String(version))
+    }
+
+    pub fn insert_group(&mut self, group: String) -> &mut Self {
+        self.insert(Tag::Group, RType::String(group))
+    }
+
+    pub fn insert_arch(&mut self, arch: String) -> &mut Self {
+        self.insert(Tag::Arch, RType::String(arch))
+    }
+
+    pub fn insert_size(&mut self, size: u64) -> &mut Self {
+        self.insert(Tag::Size, RType::Int64(size))
+    }
+
+    pub fn insert_license(&mut self, license: String) -> &mut Self {
+        self.insert(Tag::License, RType::String(license))
+    }
+
+    pub fn insert_summary(&mut self, summary: String) -> &mut Self {
+        self.insert(Tag::Summary, RType::String(summary))
+    }
+
+    pub fn insert_description(&mut self, description: String) -> &mut Self {
+        self.insert(Tag::Description, RType::String(description))
+    }
+
+    pub fn insert_build_host(&mut self, host: String) -> &mut Self {
+        self.insert(Tag::BuildHost, RType::String(host))
+    }
+
+    pub fn insert_payload_format(&mut self, compression: String) -> &mut Self {
+        self.insert(Tag::PayloadFormat, RType::String(compression))
+    }
+
+    pub fn insert_payload_compressor(&mut self, compressor: String) -> &mut Self {
+        self.insert(Tag::PayloadCompressor, RType::String(compressor))
+    }
+
+    pub fn insert_payload_flags(&mut self, flags: String) -> &mut Self {
+        self.insert(Tag::PayloadFlags, RType::String(flags))
+    }
+
+    pub fn insert_source_rpm(&mut self, source: String) -> &mut Self {
+        self.insert(Tag::SourceRpm, RType::String(source))
+    }
+
+    pub fn insert_build_time(&mut self, time: i64) -> &mut Self {
+        self.insert(Tag::BuildTime, RType::Int64(time.try_into().unwrap()))
+    }
+}
+
+impl Tags<SignatureTag> {
+    pub fn insert_payload_size(&mut self, size: u64) -> &mut Self {
+        self.insert(SignatureTag::PayloadSize, RType::Int64(size))
+    }
+}
+
 pub trait TagsWrite {
     fn write_header<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: &Tags<T>)
         -> io::Result<()>;

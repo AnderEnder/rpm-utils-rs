@@ -104,6 +104,18 @@ impl Lead {
         fh.write_all(&[0_u8; 16])?;
         Ok(())
     }
+
+    pub fn from_str(info: String) -> Self {
+        let mut name = [0_u8; 66];
+        info.as_bytes().read(&mut name).unwrap();
+
+        Self {
+            major: 3,
+            minor: 1,
+            name,
+            ..Default::default()
+        }
+    }
 }
 
 impl fmt::Display for Lead {

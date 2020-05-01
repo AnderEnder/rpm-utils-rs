@@ -4,7 +4,7 @@ pub use cpio::*;
 
 use bitflags::bitflags;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileInfo {
     pub name: String,
     pub size: u64,
