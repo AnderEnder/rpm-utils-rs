@@ -1,5 +1,6 @@
 use chrono::Utc;
 use std::convert::AsRef;
+use std::fs::read_to_string;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -37,6 +38,10 @@ pub struct RPMBuilder {
     distribution: Option<String>,
     vendor: Option<String>,
     url: Option<String>,
+    pre_install: Option<String>,
+    post_install: Option<String>,
+    pre_uninstall: Option<String>,
+    post_uninstall: Option<String>,
     //  BINARY, SOURCE
     package_type: Option<String>,
     default_user: String,
@@ -143,12 +148,31 @@ impl RPMBuilder {
         self
     }
 
-    // scripts
-    // install_utils
-    // pre_install
-    // postInstall
-    // preUninstall
-    // postUninstall
+    // trigger scripts
+    // TriggerIn
+    // TriggerUn
+    // TriggerPostUn
+
+    pub fn pre_install(mut self, file: &str) -> Self {
+        self.pre_install = Some(file.to_owned());
+        self
+    }
+
+    pub fn post_install(mut self, file: &str) -> Self {
+        self.post_install = Some(file.to_owned());
+        self
+    }
+
+    pub fn pre_uninstall(mut self, file: &str) -> Self {
+        self.pre_uninstall = Some(file.to_owned());
+        self
+    }
+
+    pub fn post_uninstall(mut self, file: &str) -> Self {
+        self.post_uninstall = Some(file.to_owned());
+        self
+    }
+
     // preTrans
     // postTrans
 
@@ -223,6 +247,26 @@ impl RPMBuilder {
             .insert_payload_format("cpio".to_owned())
             .insert_payload_compressor(self.compression)
             .insert_payload_flags("6".to_owned());
+
+        if let Some(file) = self.pre_install {
+            let contents = read_to_string(file)?;
+            header_tags.insert_pre_install(contents);
+        }
+
+        if let Some(file) = self.post_install {
+            let contents = read_to_string(file)?;
+            header_tags.insert_post_install(contents);
+        }
+
+        if let Some(file) = self.pre_uninstall {
+            let contents = read_to_string(file)?;
+            header_tags.insert_pre_uninstall(contents);
+        }
+
+        if let Some(file) = self.post_uninstall {
+            let contents = read_to_string(file)?;
+            header_tags.insert_post_uninstall(contents);
+        }
 
         let mut signature_tags = Tags::<SignatureTag>::new();
         signature_tags.insert_payload_size(0);
