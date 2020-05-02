@@ -49,7 +49,7 @@ pub enum Tag {
     Arch = 1022,
     PreIn = 1023,
     PostIn = 1024,
-    ReUn = 1025,
+    PreUn = 1025,
     PostUn = 1026,
     OldFileNames = 1027,
     FileSizes = 1028,

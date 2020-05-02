@@ -257,7 +257,24 @@ impl Tags<Tag> {
     }
 
     pub fn insert_build_time(&mut self, time: i64) -> &mut Self {
-        self.insert(Tag::BuildTime, RType::Int64(time.try_into().unwrap()))
+        let time_u64 = time.try_into().expect("Timestamp is out of u64");
+        self.insert(Tag::BuildTime, RType::Int64(time_u64))
+    }
+
+    pub fn insert_pre_install(&mut self, script: String) -> &mut Self {
+        self.insert(Tag::PreIn, RType::String(script))
+    }
+
+    pub fn insert_post_install(&mut self, script: String) -> &mut Self {
+        self.insert(Tag::PostIn, RType::String(script))
+    }
+
+    pub fn insert_pre_uninstall(&mut self, script: String) -> &mut Self {
+        self.insert(Tag::PreUn, RType::String(script))
+    }
+
+    pub fn insert_post_uninstall(&mut self, script: String) -> &mut Self {
+        self.insert(Tag::PostUn, RType::String(script))
     }
 }
 
