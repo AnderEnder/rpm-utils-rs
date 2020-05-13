@@ -25,4 +25,4 @@ bitflags = "1"
 tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.15"
+nix = "0.17"
