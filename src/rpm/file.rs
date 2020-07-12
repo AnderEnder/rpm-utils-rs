@@ -120,7 +120,7 @@ impl<T: 'static + Write> RPMFile<T> {
             ))),
             "bzip2" => Ok(Box::new(BzEncoder::new(
                 self.file,
-                bzip2::Compression::Best,
+                bzip2::Compression::best(),
             ))),
             "zstd" => Ok(Box::new(Encoder::new(self.file, 3)?)),
             "xz" | "lzma" => Ok(Box::new(XzEncoder::new(self.file, 3))),
