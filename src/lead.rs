@@ -172,8 +172,8 @@ impl PartialEq for Lead {
             && self.signature_type == other.signature_type
             && self.reserved == other.reserved
             && self.name.to_vec() == other.name.to_vec()
-            && self.reserved == self.reserved
-            && self.magic == self.magic
+            && self.reserved == other.reserved
+            && self.magic == other.magic
     }
 }
 
