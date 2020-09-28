@@ -66,12 +66,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "chrono"
-version = "0.4.15"
+version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
+ "libc 0.2.74 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-integer 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-traits 0.2.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "time 0.1.43 (registry+https://github.com/rust-lang/crates.io-index)",
+ "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -375,7 +377,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "bzip2 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "chrono 0.4.15 (registry+https://github.com/rust-lang/crates.io-index)",
+ "chrono 0.4.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "filetime 0.2.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "flate2 1.0.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -575,7 +577,7 @@ dependencies = [
 "checksum bzip2-sys 0.1.8+1.0.8 (registry+https://github.com/rust-lang/crates.io-index)" = "05305b41c5034ff0e93937ac64133d109b5a2660114ec45e9760bc6816d83038"
 "checksum cc 1.0.50 (registry+https://github.com/rust-lang/crates.io-index)" = "95e28fa049fda1c330bcf9d723be7663a899c4679724b34c81e9f5a326aab8cd"
 "checksum cfg-if 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)" = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
-"checksum chrono 0.4.15 (registry+https://github.com/rust-lang/crates.io-index)" = "942f72db697d8767c22d46a598e01f2d3b475501ea43d0db4f16d90259182d0b"
+"checksum chrono 0.4.18 (registry+https://github.com/rust-lang/crates.io-index)" = "d021fddb7bd3e734370acfa4a83f34095571d8570c039f1420d77540f68d5772"
 "checksum clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5067f5bb2d80ef5d68b4c87db81601f0b75bca627bc2ef76b141d7b846a3c6d9"
 "checksum crc32fast 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ba125de2af0df55319f41944744ad91c71113bf74a4646efff39afe1f6842db1"
 "checksum either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
