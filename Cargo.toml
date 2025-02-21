@@ -18,7 +18,7 @@ xz2 = "0.1"
 hex = "0.4"
 filetime = "0.2"
 omnom = "3"
-hostname = "0.3"
+hostname = "0.4"
 bitflags = "2"
 
 [dev-dependencies]
