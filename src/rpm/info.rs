@@ -28,7 +28,11 @@ pub struct RPMInfo {
 
 impl fmt::Display for RPMInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let build_time = Local.timestamp(self.build_time, 0).format("%c").to_string();
+        let build_time = Local
+            .timestamp_opt(self.build_time, 0)
+            .unwrap()
+            .format("%c")
+            .to_string();
 
         writeln!(f, "Name        : {}", self.name)?;
         writeln!(f, "Version     : {}", self.version)?;

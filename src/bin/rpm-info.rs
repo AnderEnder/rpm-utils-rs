@@ -1,18 +1,18 @@
+use clap::Parser;
 use rpm_utils::{RPMFile, RPMInfo};
 use std::io;
 use std::path::PathBuf;
 use std::process::exit;
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "rpm-info")]
+#[derive(Debug, Parser)]
+#[command(name = "rpm-info")]
 struct Args {
     /// Path to data file
-    #[structopt(name = "path", parse(from_os_str))]
+    #[arg(name = "path")]
     path: PathBuf,
 
     /// Show internal debug information
-    #[structopt(long = "debug", short = "d")]
+    #[arg(long = "debug", short = 'd')]
     debug: bool,
 }
 
@@ -31,7 +31,7 @@ fn run(args: Args) -> io::Result<()> {
 }
 
 fn main() {
-    let args = Args::from_args();
+    let args = Args::parse();
     if let Err(err) = run(args) {
         eprintln!("{}", err);
         exit(1);
