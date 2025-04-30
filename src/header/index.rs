@@ -357,4 +357,299 @@ mod tests {
 
         assert_eq!(index, index2);
     }
+
+    #[test]
+    fn test_rtype_as_string() {
+        assert_eq!(RType::Null.as_string(), Some(String::new()));
+        assert_eq!(
+            RType::Bin(vec![0x01, 0x02]).as_string(),
+            Some(format!("{:x?}", vec![0x01, 0x02]))
+        );
+        assert_eq!(RType::Char('a').as_string(), Some("a".to_string()));
+        assert_eq!(
+            RType::String("test".to_string()).as_string(),
+            Some("test".to_string())
+        );
+        assert_eq!(
+            RType::I18nstring("i18n".to_string()).as_string(),
+            Some("i18n".to_string())
+        );
+        assert_eq!(RType::Int8(8).as_string(), Some("8".to_string()));
+        assert_eq!(RType::Int16(16).as_string(), Some("16".to_string()));
+        assert_eq!(RType::Int32(32).as_string(), Some("32".to_string()));
+        assert_eq!(RType::Int64(64).as_string(), Some("64".to_string()));
+        assert_eq!(
+            RType::StringArray(vec!["a".to_string(), "b".to_string()]).as_string(),
+            Some("a,b".to_string())
+        );
+        assert_eq!(RType::Int8Array(vec![1, 2]).as_string(), None);
+        assert_eq!(RType::Int16Array(vec![1, 2]).as_string(), None);
+        assert_eq!(RType::Int32Array(vec![1, 2]).as_string(), None);
+        assert_eq!(RType::Int64Array(vec![1, 2]).as_string(), None);
+    }
+
+    #[test]
+    fn test_rtype_as_string_array() {
+        assert_eq!(
+            RType::StringArray(vec!["a".to_string(), "b".to_string()]).as_string_array(),
+            Some(vec!["a".to_string(), "b".to_string()])
+        );
+        assert_eq!(
+            RType::String("not an array".to_string()).as_string_array(),
+            None
+        );
+    }
+
+    #[test]
+    fn test_rtype_as_u64() {
+        assert_eq!(RType::Int8(8).as_u64(), Some(8));
+        assert_eq!(RType::Int16(16).as_u64(), Some(16));
+        assert_eq!(RType::Int32(32).as_u64(), Some(32));
+        assert_eq!(RType::Int64(64).as_u64(), Some(64));
+        assert_eq!(RType::String("not a number".to_string()).as_u64(), None);
+    }
+
+    #[test]
+    fn test_rtype_as_u64_array() {
+        assert_eq!(
+            RType::Int8Array(vec![1, 2]).as_u64_array(),
+            Some(vec![1, 2])
+        );
+        assert_eq!(
+            RType::Int16Array(vec![1, 2]).as_u64_array(),
+            Some(vec![1, 2])
+        );
+        assert_eq!(
+            RType::Int32Array(vec![1, 2]).as_u64_array(),
+            Some(vec![1, 2])
+        );
+        assert_eq!(
+            RType::Int64Array(vec![1, 2]).as_u64_array(),
+            Some(vec![1, 2])
+        );
+        assert_eq!(
+            RType::String("not an array".to_string()).as_u64_array(),
+            None
+        );
+    }
+
+    #[test]
+    fn test_rtype_as_u32() {
+        assert_eq!(RType::Int8(8).as_u32(), Some(8));
+        assert_eq!(RType::Int16(16).as_u32(), Some(16));
+        assert_eq!(RType::Int32(32).as_u32(), Some(32));
+        assert_eq!(RType::Int64(64).as_u32(), None);
+        assert_eq!(RType::String("not a number".to_string()).as_u32(), None);
+    }
+
+    #[test]
+    fn test_rtype_as_i64() {
+        assert_eq!(RType::Int8(8).as_i64(), Some(8));
+        assert_eq!(RType::Int16(16).as_i64(), Some(16));
+        assert_eq!(RType::Int32(32).as_i64(), Some(32));
+        assert_eq!(RType::Int64(64).as_i64(), None);
+        assert_eq!(RType::String("not a number".to_string()).as_i64(), None);
+    }
+
+    #[test]
+    fn test_rtype_as_u32_array() {
+        assert_eq!(
+            RType::Int8Array(vec![1, 2]).as_u32_array(),
+            Some(vec![1, 2])
+        );
+        assert_eq!(
+            RType::Int16Array(vec![1, 2]).as_u32_array(),
+            Some(vec![1, 2])
+        );
+        assert_eq!(
+            RType::Int32Array(vec![1, 2]).as_u32_array(),
+            Some(vec![1, 2])
+        );
+        assert_eq!(RType::Int64Array(vec![1, 2]).as_u32_array(), None);
+        assert_eq!(
+            RType::String("not an array".to_string()).as_u32_array(),
+            None
+        );
+    }
+
+    #[test]
+    fn test_rtype_as_u16() {
+        assert_eq!(RType::Int8(8).as_u16(), Some(8));
+        assert_eq!(RType::Int16(16).as_u16(), Some(16));
+        assert_eq!(RType::Int32(32).as_u16(), None);
+        assert_eq!(RType::String("not a number".to_string()).as_u16(), None);
+    }
+
+    #[test]
+    fn test_rtype_as_u16_array() {
+        assert_eq!(
+            RType::Int8Array(vec![1, 2]).as_u16_array(),
+            Some(vec![1, 2])
+        );
+        assert_eq!(
+            RType::Int16Array(vec![1, 2]).as_u16_array(),
+            Some(vec![1, 2])
+        );
+        assert_eq!(RType::Int32Array(vec![1, 2]).as_u16_array(), None);
+        assert_eq!(
+            RType::String("not an array".to_string()).as_u16_array(),
+            None
+        );
+    }
+
+    #[test]
+    fn test_rtype_as_u8() {
+        assert_eq!(RType::Int8(8).as_u8(), Some(8));
+        assert_eq!(RType::Int16(16).as_u8(), None);
+        assert_eq!(RType::String("not a number".to_string()).as_u8(), None);
+    }
+
+    #[test]
+    fn test_rtype_as_u8_array() {
+        assert_eq!(RType::Int8Array(vec![1, 2]).as_u8_array(), Some(vec![1, 2]));
+        assert_eq!(RType::Int16Array(vec![1, 2]).as_u8_array(), None);
+        assert_eq!(
+            RType::String("not an array".to_string()).as_u8_array(),
+            None
+        );
+    }
+
+    #[test]
+    fn test_rtype_as_char() {
+        assert_eq!(RType::Char('a').as_char(), Some('a'));
+        assert_eq!(RType::Int8(65).as_char(), None);
+        assert_eq!(RType::String("a".to_string()).as_char(), None);
+    }
+
+    #[test]
+    fn test_try_from_rtype_string() {
+        let s: Result<String, _> = RType::String("test".to_string()).try_into();
+        assert_eq!(s.unwrap(), "test");
+
+        let s: Result<String, _> = RType::Int8Array(vec![1, 2]).try_into();
+        assert!(s.is_err());
+    }
+
+    #[test]
+    fn test_try_from_rtype_string_array() {
+        let arr: Result<Vec<String>, _> =
+            RType::StringArray(vec!["a".to_string(), "b".to_string()]).try_into();
+        assert_eq!(arr.unwrap(), vec!["a", "b"]);
+
+        let arr: Result<Vec<String>, _> = RType::Int8(1).try_into();
+        assert!(arr.is_err());
+    }
+
+    #[test]
+    fn test_try_from_rtype_numeric_types() {
+        let n: Result<u8, _> = RType::Int8(42).try_into();
+        assert_eq!(n.unwrap(), 42);
+
+        let n: Result<u16, _> = RType::Int16(1000).try_into();
+        assert_eq!(n.unwrap(), 1000);
+
+        let n: Result<u32, _> = RType::Int32(100000).try_into();
+        assert_eq!(n.unwrap(), 100000);
+
+        let n: Result<u64, _> = RType::Int64(1000000).try_into();
+        assert_eq!(n.unwrap(), 1000000);
+
+        let n: Result<u64, _> = RType::String("not a number".to_string()).try_into();
+        assert!(n.is_err());
+    }
+
+    #[test]
+    fn test_try_from_rtype_numeric_arrays() {
+        let arr: Result<Vec<u8>, _> = RType::Int8Array(vec![1, 2]).try_into();
+        assert_eq!(arr.unwrap(), vec![1, 2]);
+
+        let arr: Result<Vec<u16>, _> = RType::Int16Array(vec![1, 2]).try_into();
+        assert_eq!(arr.unwrap(), vec![1, 2]);
+
+        let arr: Result<Vec<u32>, _> = RType::Int32Array(vec![1, 2]).try_into();
+        assert_eq!(arr.unwrap(), vec![1, 2]);
+
+        let arr: Result<Vec<u64>, _> = RType::Int64Array(vec![1, 2]).try_into();
+        assert_eq!(arr.unwrap(), vec![1, 2]);
+
+        let arr: Result<Vec<u8>, _> = RType::String("not an array".to_string()).try_into();
+        assert!(arr.is_err());
+    }
+
+    #[test]
+    fn test_index_from() {
+        let tag = Tag::BuildTime;
+
+        let index = Index::from(&tag, &RType::Null, 10, 1);
+        assert_eq!(index.itype, Type::Null);
+
+        let index = Index::from(&tag, &RType::Char('a'), 10, 1);
+        assert_eq!(index.itype, Type::Char);
+
+        let index = Index::from(&tag, &RType::Int8(1), 10, 1);
+        assert_eq!(index.itype, Type::Int8);
+
+        let index = Index::from(&tag, &RType::Int16(1), 10, 1);
+        assert_eq!(index.itype, Type::Int16);
+
+        let index = Index::from(&tag, &RType::Int32(1), 10, 1);
+        assert_eq!(index.itype, Type::Int32);
+
+        let index = Index::from(&tag, &RType::Int64(1), 10, 1);
+        assert_eq!(index.itype, Type::Int64);
+
+        let index = Index::from(&tag, &RType::String("test".to_string()), 10, 1);
+        assert_eq!(index.itype, Type::String);
+
+        let index = Index::from(&tag, &RType::Bin(vec![1, 2]), 10, 1);
+        assert_eq!(index.itype, Type::String);
+
+        let index = Index::from(&tag, &RType::StringArray(vec!["a".to_string()]), 10, 1);
+        assert_eq!(index.itype, Type::StringArray);
+
+        let index = Index::from(&tag, &RType::I18nstring("i18n".to_string()), 10, 1);
+        assert_eq!(index.itype, Type::I18nstring);
+
+        let index = Index::from(&tag, &RType::Int8Array(vec![1, 2]), 10, 2);
+        assert_eq!(index.itype, Type::Int8);
+        assert_eq!(index.count, 2);
+
+        let index = Index::from(&tag, &RType::Int16Array(vec![1, 2]), 10, 2);
+        assert_eq!(index.itype, Type::Int16);
+
+        let index = Index::from(&tag, &RType::Int32Array(vec![1, 2]), 10, 2);
+        assert_eq!(index.itype, Type::Int32);
+
+        let index = Index::from(&tag, &RType::Int64Array(vec![1, 2]), 10, 2);
+        assert_eq!(index.itype, Type::Int64);
+    }
+
+    #[test]
+    fn test_index_array_read() {
+        let mut data = Vec::new();
+
+        data.write_be(Tag::BuildTime as u32).unwrap();
+        data.write_be(Type::Int32 as u32).unwrap();
+        data.write_be(10_u32).unwrap();
+        data.write_be(1_u32).unwrap();
+
+        data.write_be(Tag::BuildHost as u32).unwrap();
+        data.write_be(Type::String as u32).unwrap();
+        data.write_be(20_u32).unwrap();
+        data.write_be(1_u32).unwrap();
+
+        let mut cursor = Cursor::new(data);
+        let indices: Vec<Index<Tag>> = IndexArray::read(&mut cursor, 2).unwrap();
+
+        assert_eq!(indices.len(), 2);
+        assert_eq!(indices[0].tag, Tag::BuildTime);
+        assert_eq!(indices[0].itype, Type::Int32);
+        assert_eq!(indices[0].offset, 10);
+        assert_eq!(indices[0].count, 1);
+
+        assert_eq!(indices[1].tag, Tag::BuildHost);
+        assert_eq!(indices[1].itype, Type::String);
+        assert_eq!(indices[1].offset, 20);
+        assert_eq!(indices[1].count, 1);
+    }
 }
