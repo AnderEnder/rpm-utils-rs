@@ -309,3 +309,42 @@ pub enum SignatureTag {
     #[default]
     Other,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tag_to_string() {
+        assert_eq!(Tag::Name.to_string(), "Name");
+        assert_eq!(Tag::Version.to_string(), "Version");
+        assert_eq!(Tag::Release.to_string(), "Release");
+        assert_eq!(Tag::Summary.to_string(), "Summary");
+        assert_eq!(Tag::Description.to_string(), "Description");
+        assert_eq!(Tag::BuildTime.to_string(), "BuildTime");
+        assert_eq!(Tag::BuildHost.to_string(), "BuildHost");
+    }
+
+    #[test]
+    fn test_signature_tag_to_string() {
+        assert_eq!(SignatureTag::Size.to_string(), "Size");
+        assert_eq!(SignatureTag::SHA256Header.to_string(), "SHA256Header");
+        assert_eq!(SignatureTag::MD5.to_string(), "MD5");
+        assert_eq!(SignatureTag::GPG.to_string(), "GPG");
+        assert_eq!(SignatureTag::PGP.to_string(), "PGP");
+        assert_eq!(SignatureTag::DSAHeader.to_string(), "DSAHeader");
+        assert_eq!(SignatureTag::RSAHeader.to_string(), "RSAHeader");
+    }
+
+    #[test]
+    fn test_tag_default() {
+        let default_tag = Tag::default();
+        assert_eq!(default_tag, Tag::Other);
+    }
+
+    #[test]
+    fn test_signature_tag_default() {
+        let default_sigtag = SignatureTag::default();
+        assert_eq!(default_sigtag, SignatureTag::Other);
+    }
+}
