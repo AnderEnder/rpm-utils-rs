@@ -62,7 +62,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::u32;
+
     #[test]
     fn test_allign_n() {
         assert_eq!(align_n_bytes(32, 8), 0);
@@ -96,7 +96,7 @@ mod tests {
         assert_eq!(buf.as_slice(), b"000001f1");
 
         let mut buf = Vec::new();
-        buf.write_u32_as_hex(std::u32::MAX).unwrap();
+        buf.write_u32_as_hex(u32::MAX).unwrap();
         assert_eq!(buf.as_slice(), b"ffffffff");
     }
 }

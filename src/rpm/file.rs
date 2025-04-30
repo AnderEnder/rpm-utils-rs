@@ -51,7 +51,7 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
         let header_indexes = IndexArray::read(&mut reader, header.nindex)?;
         let header_tags = Tags::read(&mut reader, &header_indexes, header.hsize as usize)?;
 
-        let payload_offset = reader.seek(SeekFrom::Current(0))?;
+        let payload_offset = reader.stream_position()?;
 
         Ok(RPMFile {
             lead,
@@ -63,7 +63,11 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
     }
 
     pub fn copy_payload(self, path: &Path) -> io::Result<u64> {
-        let mut writer = OpenOptions::new().create(true).write(true).open(path)?;
+        let mut writer = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)?;
         let mut reader = self.into_uncompress_reader()?;
         io::copy(&mut reader, &mut writer)
     }

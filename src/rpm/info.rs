@@ -161,7 +161,12 @@ impl RPMInfo {
 impl From<&RPMInfo> for Lead {
     fn from(info: &RPMInfo) -> Self {
         let mut name = [0_u8; 66];
-        info.name.as_bytes().read(&mut name).unwrap();
+
+        let _size = info
+            .name
+            .as_bytes()
+            .read(&mut name)
+            .expect("create a name with 66 bytes");
 
         Self {
             major: 3,

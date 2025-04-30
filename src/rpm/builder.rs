@@ -4,6 +4,7 @@ use std::fs::read_to_string;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use super::file::RPMFile;
 use crate::payload::FileInfo;
@@ -217,7 +218,11 @@ impl RPMBuilder {
             .filename
             .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No rpm file is defined"))?;
 
-        let writer = OpenOptions::new().create(true).write(true).open(filename)?;
+        let writer = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(filename)?;
 
         let mut file_infos: Vec<FileInfo> = Vec::new();
 
@@ -271,7 +276,7 @@ impl RPMBuilder {
         let mut signature_tags = Tags::<SignatureTag>::new();
         signature_tags.insert_payload_size(0);
 
-        let lead = Lead::from_str(package_name);
+        let lead = Lead::from_str(&package_name)?;
 
         Ok(RPMFile {
             lead,
