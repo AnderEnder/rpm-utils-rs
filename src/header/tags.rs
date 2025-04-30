@@ -1,7 +1,7 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 use strum_macros::Display;
 
-#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Display, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Display, PartialEq, Eq, Hash, Default)]
 pub enum Tag {
     Image = 61,
     Signatures = 62,
@@ -270,16 +270,11 @@ pub enum Tag {
     AutoInstalled = 5094,
     Identity = 5095,
     ModularityLabel = 5096,
+    #[default]
     Other = 8888,
 }
 
-impl Default for Tag {
-    fn default() -> Tag {
-        Tag::Other
-    }
-}
-
-#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Display, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Display, PartialEq, Eq, Hash, Default)]
 pub enum SignatureTag {
     HeaderImage = 61,
     HeaderSignatures = 62,
@@ -311,11 +306,6 @@ pub enum SignatureTag {
     PGP5 = 1006,
     PayloadSize = 1007,
     ReservedSpace = 1008,
+    #[default]
     Other,
-}
-
-impl Default for SignatureTag {
-    fn default() -> SignatureTag {
-        SignatureTag::Other
-    }
 }

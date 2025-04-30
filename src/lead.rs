@@ -3,6 +3,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use omnom::prelude::*;
 use std::fmt;
 use std::io::{self, Read, Seek, Write};
+use std::str::FromStr;
 use strum_macros::Display;
 
 use crate::utils::parse_string;
@@ -54,7 +55,7 @@ impl Lead {
                         "Error: rpm format version is not supported {}.{}",
                         major, minor
                     ),
-                ))
+                ));
             }
         }
 
@@ -104,17 +105,21 @@ impl Lead {
         fh.write_all(&[0_u8; 16])?;
         Ok(())
     }
+}
 
-    pub fn from_str(info: String) -> Self {
+impl FromStr for Lead {
+    type Err = io::Error;
+
+    fn from_str(info: &str) -> Result<Self, Self::Err> {
         let mut name = [0_u8; 66];
-        info.as_bytes().read(&mut name).unwrap();
+        let _size = info.as_bytes().read(&mut name)?;
 
-        Self {
+        Ok(Lead {
             major: 3,
             minor: 1,
             name,
             ..Default::default()
-        }
+        })
     }
 }
 

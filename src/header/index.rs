@@ -6,8 +6,9 @@ use std::io;
 use std::io::{Read, Seek, Write};
 use strum_macros::Display;
 
-#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display, Clone)]
+#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display, Clone, Default)]
 pub enum Type {
+    #[default]
     Null = 0,
     Char = 1,
     Int8 = 2,
@@ -18,12 +19,6 @@ pub enum Type {
     Bin = 7,
     StringArray = 8,
     I18nstring = 9,
-}
-
-impl Default for Type {
-    fn default() -> Self {
-        Type::Null
-    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -7,8 +7,8 @@ pub use lead::*;
 pub use tags::*;
 
 use num_traits::{FromPrimitive, ToPrimitive};
-use omnom::prelude::*;
 use omnom::ReadBytes;
+use omnom::prelude::*;
 use std::char;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -146,7 +146,7 @@ where
         let mut s_data = vec![0_u8; size];
         fh.read_exact(&mut s_data)?;
 
-        Self::tags_from_raw(&indexes, &s_data)
+        Self::tags_from_raw(indexes, &s_data)
     }
 
     fn tags_from_raw(indexes: &[Index<T>], data: &[u8]) -> io::Result<Self> {
@@ -286,7 +286,7 @@ impl Tags<SignatureTag> {
 
 pub trait TagsWrite {
     fn write_header<T: ToPrimitive + Eq + Hash + Copy>(&mut self, tags: &Tags<T>)
-        -> io::Result<()>;
+    -> io::Result<()>;
 }
 
 impl<W> TagsWrite for W

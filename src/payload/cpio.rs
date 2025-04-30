@@ -1,10 +1,10 @@
-use filetime::{set_file_mtime, FileTime};
+use filetime::{FileTime, set_file_mtime};
 use std::convert::{TryFrom, TryInto};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 
-use crate::utils::{align_n_bytes, HexReader, HexWriter};
+use crate::utils::{HexReader, HexWriter, align_n_bytes};
 
 const MAGIC: &[u8] = b"070701";
 const TRAILER: &str = "TRAILER!!!";
@@ -234,7 +234,7 @@ pub fn read_entry<R: Read + Seek, W: Write>(
 
 pub fn extract_entry<R: Read + Seek>(
     reader: &mut R,
-    dir: &PathBuf,
+    dir: &Path,
     creates_dir: bool,
     change_owner: bool,
 ) -> io::Result<(FileEntry, u64)> {
@@ -255,7 +255,11 @@ pub fn extract_entry<R: Read + Seek>(
                 }
             }
 
-            let mut writer = OpenOptions::new().create(true).write(true).open(&path)?;
+            let mut writer = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&path)?;
             number = io_copy_exact(reader, &mut writer, entry.file_size)?;
 
             let position = align_n_bytes(entry.file_size, 4);
@@ -265,7 +269,7 @@ pub fn extract_entry<R: Read + Seek>(
         #[cfg(all(unix))]
         {
             if change_owner {
-                use nix::unistd::{chown, Gid, Uid};
+                use nix::unistd::{Gid, Uid, chown};
                 use std::os::unix::fs::PermissionsExt;
 
                 let metadata = path.metadata()?;
@@ -296,7 +300,7 @@ pub fn extract_entry<R: Read + Seek>(
 
 pub fn extract_entries<R: Read + Seek>(
     reader: &mut R,
-    dir: &PathBuf,
+    dir: &Path,
     creates_dir: bool,
     change_owner: bool,
 ) -> io::Result<Vec<FileEntry>> {
@@ -513,7 +517,11 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
 
 impl CpioBuilder<File> {
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let writer = OpenOptions::new().create(true).write(true).open(path)?;
+        let writer = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)?;
         Ok(CpioBuilder {
             writer: Some(writer),
             records: Vec::new(),
