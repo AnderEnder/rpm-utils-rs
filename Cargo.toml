@@ -5,7 +5,7 @@ authors = ["Andrii Radyk <ander.ender@gmail.com>"]
 edition = "2024"
 
 [dependencies]
-structopt = "0.3"
+clap = { version = "4.4", features = ["derive"] }
 num-derive = "0.4"
 num-traits = "0.2"
 strum_macros = "0.27.1"

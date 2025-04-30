@@ -1,18 +1,18 @@
+use clap::Parser;
 use rpm_utils::RPMFile;
 use std::io;
 use std::path::PathBuf;
 use std::process::exit;
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "rpm-info")]
+#[derive(Debug, Parser)]
+#[command(name = "rpm2cpio")]
 struct Args {
     /// Path to rpm file
-    #[structopt(name = "rpm", parse(from_os_str))]
+    #[arg(name = "rpm")]
     path: PathBuf,
 
     /// Path to save file
-    #[structopt(long = "output", parse(from_os_str))]
+    #[arg(long = "output")]
     output: PathBuf,
 }
 
@@ -23,7 +23,7 @@ fn run(args: Args) -> io::Result<()> {
 }
 
 fn main() {
-    let args = Args::from_args();
+    let args = Args::parse();
     if let Err(err) = run(args) {
         eprintln!("{}", err);
         exit(1);
