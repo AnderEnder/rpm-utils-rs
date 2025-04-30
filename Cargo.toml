@@ -25,4 +25,4 @@ bitflags = "2"
 tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["user", "fs"] }
+nix = { version = "0.30", features = ["user", "fs"] }
