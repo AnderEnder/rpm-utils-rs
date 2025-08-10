@@ -8,7 +8,7 @@ edition = "2024"
 clap = { version = "4.5", features = ["derive"] }
 num-derive = "0.4"
 num-traits = "0.2"
-strum_macros = "0.27.1"
+strum_macros = "0.27.2"
 chrono = "0.4"
 itertools = "0.14"
 flate2 = "1"
