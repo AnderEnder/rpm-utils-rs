@@ -20,6 +20,7 @@ filetime = "0.2"
 omnom = "3"
 hostname = "0.4"
 bitflags = "2"
+log = "0.4"
 
 [dev-dependencies]
 tempfile = "3"

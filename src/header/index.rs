@@ -1,3 +1,4 @@
+use log::warn;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use omnom::prelude::*;
@@ -244,13 +245,13 @@ where
     pub fn read<R: Read>(fh: &mut R) -> io::Result<Self> {
         let tag_id: u32 = fh.read_be()?;
         let tag = T::from_u32(tag_id).unwrap_or_else(|| {
-            println!("Unknown tag {}", tag_id);
+            warn!("Unknown tag {}", tag_id);
             T::default()
         });
 
         let type_id: u32 = fh.read_be()?;
         let itype = Type::from_u32(type_id).unwrap_or_else(|| {
-            println!("Unknown type {}", type_id);
+            warn!("Unknown type {}", type_id);
             Type::Null
         });
 
