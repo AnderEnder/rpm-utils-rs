@@ -10,13 +10,13 @@ use crate::utils::parse_string;
 
 pub const MAGIC: [u8; 4] = [237, 171, 238, 219];
 
-#[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Display, Clone)]
+#[derive(Debug, PartialEq, Eq, FromPrimitive, ToPrimitive, Display, Clone)]
 pub enum Type {
     Binary = 0,
     Source = 1,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Lead {
     pub magic: [u8; 4],
     pub major: u8,
@@ -164,21 +164,6 @@ impl Default for Lead {
             signature_type: 5,
             reserved: [0; 16],
         }
-    }
-}
-
-impl PartialEq for Lead {
-    fn eq(&self, other: &Self) -> bool {
-        self.magic == other.magic
-            && self.minor == other.minor
-            && self.rpm_type == other.rpm_type
-            && self.archnum == other.archnum
-            && self.osnum == other.osnum
-            && self.signature_type == other.signature_type
-            && self.reserved == other.reserved
-            && self.name.to_vec() == other.name.to_vec()
-            && self.reserved == other.reserved
-            && self.magic == other.magic
     }
 }
 
