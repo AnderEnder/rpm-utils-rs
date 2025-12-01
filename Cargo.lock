@@ -496,6 +496,7 @@ dependencies = [
  "hex",
  "hostname",
  "itertools",
+ "log",
  "nix",
  "num-derive",
  "num-traits",
