@@ -2,7 +2,7 @@ use filetime::{FileTime, set_file_mtime};
 use std::convert::{TryFrom, TryInto};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::utils::{HexReader, HexWriter, align_n_bytes};
 
@@ -13,6 +13,24 @@ const TRAILER: &str = "TRAILER!!!";
 const MAX_NAME_SIZE: u32 = 4096;
 /// Maximum allowed CPIO entry file size (1 GB) - prevents OOM attacks
 const MAX_CPIO_ENTRY_SIZE: u32 = 1024 * 1024 * 1024;
+
+/// Check if a path is safe for extraction (no path traversal attempts)
+///
+/// Returns false if the path:
+/// - Contains ".." components (path traversal)
+/// - Is an absolute path (including Unix-style paths like "/etc" on Windows)
+/// - Starts with a path separator (cross-platform absolute path detection)
+fn is_safe_path(path: &Path) -> bool {
+    let has_traversal = path.components().any(|c| matches!(c, Component::ParentDir));
+    let is_absolute = path.is_absolute();
+
+    // On Windows, is_absolute() returns false for Unix-style paths like "/etc/passwd"
+    // So we also check if the path starts with a separator
+    let path_str = path.to_string_lossy();
+    let starts_with_separator = path_str.starts_with('/') || path_str.starts_with('\\');
+
+    !has_traversal && !is_absolute && !starts_with_separator
+}
 
 #[derive(Debug, PartialEq)]
 pub struct FileEntry {
@@ -266,18 +284,87 @@ pub fn extract_entry<R: Read + Seek>(
     // write content to file only if it is not a last pseudo
     if entry.name != TRAILER {
         let path = dir.join(&entry.name);
+
+        // Validate path safety - prevent path traversal attacks
+        // First check: reject paths with ".." components or absolute paths
+        if !is_safe_path(&Path::new(&entry.name)) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Unsafe path in archive (potential path traversal): {}", entry.name),
+            ));
+        }
+
+        // Second check: ensure the resolved path stays within the extraction directory
+        // This protects against complex traversals that might bypass component checks
+        let canonical_dir = dir.canonicalize().map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Cannot canonicalize extraction directory: {}", e),
+            )
+        })?;
+
+        // Create parent directories if needed before validation
+        // This ensures we can canonicalize paths for validation
+        if entry.nlink == 2 {
+            // Entry is a directory
+            if !path.exists() {
+                std::fs::create_dir_all(&path)?;
+            }
+        } else {
+            // Entry is a file - ensure parent directory exists
+            if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    if creates_dir {
+                        std::fs::create_dir_all(parent)?;
+                    } else {
+                        // Parent doesn't exist and we're not allowed to create it
+                        return Err(io::Error::new(
+                            io::ErrorKind::NotFound,
+                            format!("Parent directory does not exist: {:?}", parent),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Now validate that the path (or its parent for new files) is within the extraction directory
+        let canonical_path = if path.exists() {
+            path.canonicalize()?
+        } else {
+            // Path doesn't exist yet - validate using parent directory
+            let parent = path.parent().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidInput, "Invalid path: no parent directory")
+            })?;
+
+            // Parent should exist now (we created it above if needed)
+            let canonical_parent = parent.canonicalize().map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Cannot canonicalize parent directory: {}", e),
+                )
+            })?;
+
+            // Construct expected canonical path
+            let filename = path.file_name().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidInput, "Invalid path: no filename")
+            })?;
+            canonical_parent.join(filename)
+        };
+
+        // Verify the canonical path is within the canonical extraction directory
+        if !canonical_path.starts_with(&canonical_dir) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Path escapes extraction directory: {}", entry.name),
+            ));
+        }
+
         let mut number = 0;
 
         if entry.nlink == 2 {
-            std::fs::create_dir_all(&path)?;
+            // Directory already created above for validation
         } else {
-            if creates_dir {
-                let parent = path.parent();
-                if let Some(p) = parent {
-                    std::fs::create_dir_all(p)?;
-                }
-            }
-
+            // Parent directory already created above for validation
             let mut writer = OpenOptions::new()
                 .create(true)
                 .write(true)
@@ -674,5 +761,50 @@ mod tests {
                 e
             );
         }
+    }
+
+    // Path traversal security tests
+    #[test]
+    fn test_is_safe_path_rejects_parent_dir_components() {
+        // Reject paths with ".." components
+        assert!(!is_safe_path(Path::new("../../etc/passwd")));
+        assert!(!is_safe_path(Path::new("foo/../../../etc/passwd")));
+        assert!(!is_safe_path(Path::new("foo/bar/../../../etc/passwd")));
+        assert!(!is_safe_path(Path::new("../etc/passwd")));
+        assert!(!is_safe_path(Path::new("foo/..")));
+    }
+
+    #[test]
+    fn test_is_safe_path_rejects_absolute_paths() {
+        // Reject absolute paths
+        assert!(!is_safe_path(Path::new("/etc/passwd")));
+        assert!(!is_safe_path(Path::new("/tmp/test")));
+
+        // On Windows, also reject paths like C:\
+        #[cfg(windows)]
+        {
+            assert!(!is_safe_path(Path::new("C:\\Windows\\System32")));
+        }
+    }
+
+    #[test]
+    fn test_is_safe_path_accepts_valid_relative_paths() {
+        // Accept valid relative paths
+        assert!(is_safe_path(Path::new("file.txt")));
+        assert!(is_safe_path(Path::new("dir/file.txt")));
+        assert!(is_safe_path(Path::new("dir/subdir/file.txt")));
+        assert!(is_safe_path(Path::new("./file.txt")));
+        assert!(is_safe_path(Path::new("./dir/file.txt")));
+    }
+
+    #[test]
+    fn test_is_safe_path_edge_cases() {
+        // Edge cases
+        assert!(is_safe_path(Path::new(".")));
+        assert!(is_safe_path(Path::new("")));
+
+        // Paths that look suspicious but are actually safe
+        assert!(is_safe_path(Path::new("file..txt")));  // ".." in filename
+        assert!(is_safe_path(Path::new("dir/file..txt")));
     }
 }
