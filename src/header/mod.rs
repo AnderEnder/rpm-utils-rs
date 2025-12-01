@@ -18,6 +18,9 @@ use std::mem::size_of;
 
 use crate::utils::{align_n_bytes, parse_string, parse_strings};
 
+/// Maximum allowed header size (32 MB) - prevents OOM attacks from malicious RPM files
+const MAX_HEADER_SIZE: usize = 32 * 1024 * 1024;
+
 #[derive(Debug, Default)]
 pub struct Tags<T>(pub HashMap<T, RType>)
 where
@@ -143,6 +146,13 @@ where
     where
         R: Read + Seek,
     {
+        if size > MAX_HEADER_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Header size {} exceeds maximum allowed size {}", size, MAX_HEADER_SIZE),
+            ));
+        }
+
         let mut s_data = vec![0_u8; size];
         fh.read_exact(&mut s_data)?;
 
@@ -435,5 +445,71 @@ fn extract<T: ReadBytes>(
         Ok(multiple(values))
     } else {
         Ok(single((&data[position..]).read_be()?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::header::tags::Tag;
+
+    #[test]
+    fn test_header_size_limit_enforced() {
+        // Create a mock reader (doesn't matter what's in it for this test)
+        let mut data = vec![0u8; 100];
+        let mut reader = std::io::Cursor::new(&mut data);
+
+        // Test that size exceeding MAX_HEADER_SIZE is rejected
+        let oversized = MAX_HEADER_SIZE + 1;
+        let indexes: Vec<Index<Tag>> = Vec::new();
+
+        let result = Tags::read(&mut reader, &indexes, oversized);
+
+        assert!(result.is_err(), "Should reject oversized header");
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("exceeds maximum allowed size"));
+    }
+
+    #[test]
+    fn test_header_size_at_limit_accepted() {
+        // Test that size exactly at MAX_HEADER_SIZE is accepted
+        let mut data = vec![0u8; MAX_HEADER_SIZE];
+        let mut reader = std::io::Cursor::new(&mut data);
+        let indexes: Vec<Index<Tag>> = Vec::new();
+
+        let result = Tags::read(&mut reader, &indexes, MAX_HEADER_SIZE);
+
+        // Should not fail with size limit error
+        // (it may fail for other reasons like invalid data, but not size limit)
+        if let Err(e) = result {
+            assert_ne!(
+                e.kind(),
+                io::ErrorKind::InvalidData,
+                "Should not reject size at limit: {}",
+                e
+            );
+        }
+    }
+
+    #[test]
+    fn test_header_size_below_limit_accepted() {
+        // Test that normal-sized header is accepted
+        let size = 1024; // 1 KB - well below limit
+        let mut data = vec![0u8; size];
+        let mut reader = std::io::Cursor::new(&mut data);
+        let indexes: Vec<Index<Tag>> = Vec::new();
+
+        let result = Tags::read(&mut reader, &indexes, size);
+
+        // Should not fail with size limit error
+        if let Err(e) = result {
+            assert_ne!(
+                e.kind(),
+                io::ErrorKind::InvalidData,
+                "Should not reject normal size: {}",
+                e
+            );
+        }
     }
 }

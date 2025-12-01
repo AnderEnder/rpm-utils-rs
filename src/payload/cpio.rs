@@ -9,6 +9,11 @@ use crate::utils::{HexReader, HexWriter, align_n_bytes};
 const MAGIC: &[u8] = b"070701";
 const TRAILER: &str = "TRAILER!!!";
 
+/// Maximum allowed CPIO entry name size (4 KB) - prevents OOM attacks
+const MAX_NAME_SIZE: u32 = 4096;
+/// Maximum allowed CPIO entry file size (1 GB) - prevents OOM attacks
+const MAX_CPIO_ENTRY_SIZE: u32 = 1024 * 1024 * 1024;
+
 #[derive(Debug, PartialEq)]
 pub struct FileEntry {
     pub name: String,
@@ -44,11 +49,29 @@ impl FileEntry {
         let nlink = reader.read_hex_as_u32()?;
         let mtime = reader.read_hex_as_u32()?;
         let file_size = reader.read_hex_as_u32()?;
+
+        // Validate file size to prevent OOM attacks
+        if file_size > MAX_CPIO_ENTRY_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("CPIO entry file size {} exceeds maximum allowed size {}", file_size, MAX_CPIO_ENTRY_SIZE),
+            ));
+        }
+
         let dev_major = reader.read_hex_as_u32()?;
         let dev_minor = reader.read_hex_as_u32()?;
         let rdev_major = reader.read_hex_as_u32()?;
         let rdev_minor = reader.read_hex_as_u32()?;
         let name_size = reader.read_hex_as_u32()?;
+
+        // Validate name size to prevent OOM attacks
+        if name_size > MAX_NAME_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("CPIO entry name size {} exceeds maximum allowed size {}", name_size, MAX_NAME_SIZE),
+            ));
+        }
+
         let mut checksum = [0_u8; 8];
         reader.read_exact(&mut checksum)?;
 
@@ -532,6 +555,7 @@ impl CpioBuilder<File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn test_cpio_write_entry() -> io::Result<()> {
         let mut writer = Vec::new();
@@ -539,5 +563,116 @@ mod tests {
         let entry = FileEntry::read(&mut writer.as_slice())?;
         assert_eq!(entry, FileEntry::default());
         Ok(())
+    }
+
+    // Buffer size limit security tests
+    #[test]
+    fn test_cpio_rejects_oversized_file() {
+        // Create CPIO data with file_size exceeding MAX_CPIO_ENTRY_SIZE
+        let mut data = Vec::new();
+
+        // Write magic
+        data.extend_from_slice(b"070701");
+
+        // Write header fields as hex (8 chars each)
+        let write_hex = |data: &mut Vec<u8>, val: u32| {
+            data.extend_from_slice(format!("{:08x}", val).as_bytes());
+        };
+
+        write_hex(&mut data, 0);  // ino
+        write_hex(&mut data, 0);  // mode
+        write_hex(&mut data, 0);  // uid
+        write_hex(&mut data, 0);  // gid
+        write_hex(&mut data, 0);  // nlink
+        write_hex(&mut data, 0);  // mtime
+        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE + 1);  // file_size - OVERSIZED!
+
+        let mut reader = std::io::Cursor::new(data);
+        let result = FileEntry::read(&mut reader);
+
+        assert!(result.is_err(), "Should reject oversized file");
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("file size"));
+        assert!(err.to_string().contains("exceeds maximum"));
+    }
+
+    #[test]
+    fn test_cpio_rejects_oversized_name() {
+        // Create CPIO data with name_size exceeding MAX_NAME_SIZE
+        let mut data = Vec::new();
+
+        // Write magic
+        data.extend_from_slice(b"070701");
+
+        // Write header fields as hex
+        let write_hex = |data: &mut Vec<u8>, val: u32| {
+            data.extend_from_slice(format!("{:08x}", val).as_bytes());
+        };
+
+        write_hex(&mut data, 0);  // ino
+        write_hex(&mut data, 0);  // mode
+        write_hex(&mut data, 0);  // uid
+        write_hex(&mut data, 0);  // gid
+        write_hex(&mut data, 0);  // nlink
+        write_hex(&mut data, 0);  // mtime
+        write_hex(&mut data, 100);  // file_size - reasonable
+        write_hex(&mut data, 0);  // dev_major
+        write_hex(&mut data, 0);  // dev_minor
+        write_hex(&mut data, 0);  // rdev_major
+        write_hex(&mut data, 0);  // rdev_minor
+        write_hex(&mut data, MAX_NAME_SIZE + 1);  // name_size - OVERSIZED!
+
+        let mut reader = std::io::Cursor::new(data);
+        let result = FileEntry::read(&mut reader);
+
+        assert!(result.is_err(), "Should reject oversized name");
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("name size"));
+        assert!(err.to_string().contains("exceeds maximum"));
+    }
+
+    #[test]
+    fn test_cpio_accepts_size_at_limits() {
+        // Test that sizes exactly at the limits are accepted
+        // (This test validates the boundary condition)
+        let mut data = Vec::new();
+
+        data.extend_from_slice(b"070701");
+
+        let write_hex = |data: &mut Vec<u8>, val: u32| {
+            data.extend_from_slice(format!("{:08x}", val).as_bytes());
+        };
+
+        write_hex(&mut data, 0);  // ino
+        write_hex(&mut data, 0);  // mode
+        write_hex(&mut data, 0);  // uid
+        write_hex(&mut data, 0);  // gid
+        write_hex(&mut data, 0);  // nlink
+        write_hex(&mut data, 0);  // mtime
+        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE);  // file_size - at limit
+        write_hex(&mut data, 0);  // dev_major
+        write_hex(&mut data, 0);  // dev_minor
+        write_hex(&mut data, 0);  // rdev_major
+        write_hex(&mut data, 0);  // rdev_minor
+        write_hex(&mut data, MAX_NAME_SIZE);  // name_size - at limit
+        data.extend_from_slice(&[0u8; 8]);  // checksum
+
+        // Add name data (MAX_NAME_SIZE bytes)
+        data.extend_from_slice(&vec![b'a'; MAX_NAME_SIZE as usize]);
+
+        let mut reader = std::io::Cursor::new(data);
+        let result = FileEntry::read(&mut reader);
+
+        // Should not fail with size limit error
+        if let Err(e) = result {
+            assert_ne!(
+                e.kind(),
+                io::ErrorKind::InvalidData,
+                "Should not reject size at limit: {}",
+                e
+            );
+        }
     }
 }
