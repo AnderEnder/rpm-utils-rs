@@ -19,17 +19,68 @@ const MAX_CPIO_ENTRY_SIZE: u32 = 1024 * 1024 * 1024;
 /// Returns false if the path:
 /// - Contains ".." components (path traversal)
 /// - Is an absolute path (including Unix-style paths like "/etc" on Windows)
-/// - Starts with a path separator (cross-platform absolute path detection)
+/// - Starts with a root directory component (cross-platform absolute path detection)
 fn is_safe_path(path: &Path) -> bool {
     let has_traversal = path.components().any(|c| matches!(c, Component::ParentDir));
     let is_absolute = path.is_absolute();
 
     // On Windows, is_absolute() returns false for Unix-style paths like "/etc/passwd"
-    // So we also check if the path starts with a separator
-    let path_str = path.to_string_lossy();
-    let starts_with_separator = path_str.starts_with('/') || path_str.starts_with('\\');
+    // So we also check if the path starts with a root directory component
+    let starts_with_root = matches!(path.components().next(), Some(Component::RootDir));
 
-    !has_traversal && !is_absolute && !starts_with_separator
+    !has_traversal && !is_absolute && !starts_with_root
+}
+
+/// Compute the expected canonical path without creating any filesystem entries.
+/// This walks up the path tree to find an existing ancestor, canonicalizes it,
+/// then joins the remaining path components.
+///
+/// Returns the expected canonical path and validates that all existing path
+/// components that are symlinks resolve to locations within the base directory.
+fn compute_safe_canonical_path(path: &Path, canonical_base: &Path) -> io::Result<PathBuf> {
+    // Find the deepest existing ancestor
+    let mut existing_ancestor = path.to_path_buf();
+    let mut components_to_add: Vec<std::ffi::OsString> = Vec::new();
+
+    while !existing_ancestor.exists() {
+        if let Some(file_name) = existing_ancestor.file_name() {
+            components_to_add.push(file_name.to_os_string());
+        }
+        if !existing_ancestor.pop() {
+            // We've reached the root without finding an existing path
+            // This shouldn't happen if base directory exists
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "No existing ancestor directory found",
+            ));
+        }
+    }
+
+    // Canonicalize the existing ancestor (this resolves symlinks)
+    let canonical_ancestor = existing_ancestor.canonicalize().map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Cannot canonicalize existing path: {}", e),
+        )
+    })?;
+
+    // Verify the existing ancestor is within the base directory
+    // This catches symlink attacks where an existing directory is a symlink
+    // pointing outside the extraction directory
+    if !canonical_ancestor.starts_with(canonical_base) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Path contains symlink escaping extraction directory",
+        ));
+    }
+
+    // Build the expected canonical path by adding back the non-existing components
+    let mut result = canonical_ancestor;
+    for component in components_to_add.into_iter().rev() {
+        result.push(component);
+    }
+
+    Ok(result)
 }
 
 #[derive(Debug, PartialEq)]
@@ -72,7 +123,10 @@ impl FileEntry {
         if file_size > MAX_CPIO_ENTRY_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("CPIO entry file size {} exceeds maximum allowed size {}", file_size, MAX_CPIO_ENTRY_SIZE),
+                format!(
+                    "CPIO entry file size {} exceeds maximum allowed size {}",
+                    file_size, MAX_CPIO_ENTRY_SIZE
+                ),
             ));
         }
 
@@ -86,7 +140,10 @@ impl FileEntry {
         if name_size > MAX_NAME_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("CPIO entry name size {} exceeds maximum allowed size {}", name_size, MAX_NAME_SIZE),
+                format!(
+                    "CPIO entry name size {} exceeds maximum allowed size {}",
+                    name_size, MAX_NAME_SIZE
+                ),
             ));
         }
 
@@ -285,17 +342,20 @@ pub fn extract_entry<R: Read + Seek>(
     if entry.name != TRAILER {
         let path = dir.join(&entry.name);
 
-        // Validate path safety - prevent path traversal attacks
+        // === PATH VALIDATION (before any filesystem modifications) ===
+
         // First check: reject paths with ".." components or absolute paths
-        if !is_safe_path(&Path::new(&entry.name)) {
+        if !is_safe_path(Path::new(&entry.name)) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("Unsafe path in archive (potential path traversal): {}", entry.name),
+                format!(
+                    "Unsafe path in archive (potential path traversal): {}",
+                    entry.name
+                ),
             ));
         }
 
-        // Second check: ensure the resolved path stays within the extraction directory
-        // This protects against complex traversals that might bypass component checks
+        // Canonicalize the extraction directory
         let canonical_dir = dir.canonicalize().map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -303,55 +363,11 @@ pub fn extract_entry<R: Read + Seek>(
             )
         })?;
 
-        // Create parent directories if needed before validation
-        // This ensures we can canonicalize paths for validation
-        if entry.nlink == 2 {
-            // Entry is a directory
-            if !path.exists() {
-                std::fs::create_dir_all(&path)?;
-            }
-        } else {
-            // Entry is a file - ensure parent directory exists
-            if let Some(parent) = path.parent() {
-                if !parent.exists() {
-                    if creates_dir {
-                        std::fs::create_dir_all(parent)?;
-                    } else {
-                        // Parent doesn't exist and we're not allowed to create it
-                        return Err(io::Error::new(
-                            io::ErrorKind::NotFound,
-                            format!("Parent directory does not exist: {:?}", parent),
-                        ));
-                    }
-                }
-            }
-        }
+        // Second check: compute expected canonical path and validate it stays within
+        // the extraction directory. This also detects symlink attacks where existing
+        // path components are symlinks pointing outside the extraction directory.
+        let canonical_path = compute_safe_canonical_path(&path, &canonical_dir)?;
 
-        // Now validate that the path (or its parent for new files) is within the extraction directory
-        let canonical_path = if path.exists() {
-            path.canonicalize()?
-        } else {
-            // Path doesn't exist yet - validate using parent directory
-            let parent = path.parent().ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidInput, "Invalid path: no parent directory")
-            })?;
-
-            // Parent should exist now (we created it above if needed)
-            let canonical_parent = parent.canonicalize().map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("Cannot canonicalize parent directory: {}", e),
-                )
-            })?;
-
-            // Construct expected canonical path
-            let filename = path.file_name().ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidInput, "Invalid path: no filename")
-            })?;
-            canonical_parent.join(filename)
-        };
-
-        // Verify the canonical path is within the canonical extraction directory
         if !canonical_path.starts_with(&canonical_dir) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -359,12 +375,30 @@ pub fn extract_entry<R: Read + Seek>(
             ));
         }
 
+        // === FILESYSTEM OPERATIONS (only after validation passes) ===
+
         let mut number = 0;
 
         if entry.nlink == 2 {
-            // Directory already created above for validation
+            // Entry is a directory
+            if !path.exists() {
+                std::fs::create_dir_all(&path)?;
+            }
         } else {
-            // Parent directory already created above for validation
+            // Entry is a file - ensure parent directory exists
+            if let Some(parent) = path.parent()
+                && !parent.exists()
+            {
+                if creates_dir {
+                    std::fs::create_dir_all(parent)?;
+                } else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("Parent directory does not exist: {}", parent.display()),
+                    ));
+                }
+            }
+
             let mut writer = OpenOptions::new()
                 .create(true)
                 .write(true)
@@ -666,13 +700,13 @@ mod tests {
             data.extend_from_slice(format!("{:08x}", val).as_bytes());
         };
 
-        write_hex(&mut data, 0);  // ino
-        write_hex(&mut data, 0);  // mode
-        write_hex(&mut data, 0);  // uid
-        write_hex(&mut data, 0);  // gid
-        write_hex(&mut data, 0);  // nlink
-        write_hex(&mut data, 0);  // mtime
-        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE + 1);  // file_size - OVERSIZED!
+        write_hex(&mut data, 0); // ino
+        write_hex(&mut data, 0); // mode
+        write_hex(&mut data, 0); // uid
+        write_hex(&mut data, 0); // gid
+        write_hex(&mut data, 0); // nlink
+        write_hex(&mut data, 0); // mtime
+        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE + 1); // file_size - OVERSIZED!
 
         let mut reader = std::io::Cursor::new(data);
         let result = FileEntry::read(&mut reader);
@@ -697,18 +731,18 @@ mod tests {
             data.extend_from_slice(format!("{:08x}", val).as_bytes());
         };
 
-        write_hex(&mut data, 0);  // ino
-        write_hex(&mut data, 0);  // mode
-        write_hex(&mut data, 0);  // uid
-        write_hex(&mut data, 0);  // gid
-        write_hex(&mut data, 0);  // nlink
-        write_hex(&mut data, 0);  // mtime
-        write_hex(&mut data, 100);  // file_size - reasonable
-        write_hex(&mut data, 0);  // dev_major
-        write_hex(&mut data, 0);  // dev_minor
-        write_hex(&mut data, 0);  // rdev_major
-        write_hex(&mut data, 0);  // rdev_minor
-        write_hex(&mut data, MAX_NAME_SIZE + 1);  // name_size - OVERSIZED!
+        write_hex(&mut data, 0); // ino
+        write_hex(&mut data, 0); // mode
+        write_hex(&mut data, 0); // uid
+        write_hex(&mut data, 0); // gid
+        write_hex(&mut data, 0); // nlink
+        write_hex(&mut data, 0); // mtime
+        write_hex(&mut data, 100); // file_size - reasonable
+        write_hex(&mut data, 0); // dev_major
+        write_hex(&mut data, 0); // dev_minor
+        write_hex(&mut data, 0); // rdev_major
+        write_hex(&mut data, 0); // rdev_minor
+        write_hex(&mut data, MAX_NAME_SIZE + 1); // name_size - OVERSIZED!
 
         let mut reader = std::io::Cursor::new(data);
         let result = FileEntry::read(&mut reader);
@@ -732,19 +766,19 @@ mod tests {
             data.extend_from_slice(format!("{:08x}", val).as_bytes());
         };
 
-        write_hex(&mut data, 0);  // ino
-        write_hex(&mut data, 0);  // mode
-        write_hex(&mut data, 0);  // uid
-        write_hex(&mut data, 0);  // gid
-        write_hex(&mut data, 0);  // nlink
-        write_hex(&mut data, 0);  // mtime
-        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE);  // file_size - at limit
-        write_hex(&mut data, 0);  // dev_major
-        write_hex(&mut data, 0);  // dev_minor
-        write_hex(&mut data, 0);  // rdev_major
-        write_hex(&mut data, 0);  // rdev_minor
-        write_hex(&mut data, MAX_NAME_SIZE);  // name_size - at limit
-        data.extend_from_slice(&[0u8; 8]);  // checksum
+        write_hex(&mut data, 0); // ino
+        write_hex(&mut data, 0); // mode
+        write_hex(&mut data, 0); // uid
+        write_hex(&mut data, 0); // gid
+        write_hex(&mut data, 0); // nlink
+        write_hex(&mut data, 0); // mtime
+        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE); // file_size - at limit
+        write_hex(&mut data, 0); // dev_major
+        write_hex(&mut data, 0); // dev_minor
+        write_hex(&mut data, 0); // rdev_major
+        write_hex(&mut data, 0); // rdev_minor
+        write_hex(&mut data, MAX_NAME_SIZE); // name_size - at limit
+        data.extend_from_slice(&[0u8; 8]); // checksum
 
         // Add name data (MAX_NAME_SIZE bytes)
         data.extend_from_slice(&vec![b'a'; MAX_NAME_SIZE as usize]);
@@ -799,12 +833,91 @@ mod tests {
 
     #[test]
     fn test_is_safe_path_edge_cases() {
-        // Edge cases
+        // Edge cases: current directory and empty path are considered safe by is_safe_path
+        // (empty paths will fail later during extraction when file_name() returns None)
         assert!(is_safe_path(Path::new(".")));
         assert!(is_safe_path(Path::new("")));
 
-        // Paths that look suspicious but are actually safe
-        assert!(is_safe_path(Path::new("file..txt")));  // ".." in filename
+        // "file..txt" is safe - the ".." is part of the filename, not a ParentDir component
+        assert!(is_safe_path(Path::new("file..txt")));
         assert!(is_safe_path(Path::new("dir/file..txt")));
+    }
+
+    #[test]
+    fn test_compute_safe_canonical_path_valid_paths() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let base = temp_dir.path();
+        let canonical_base = base.canonicalize().unwrap();
+
+        // Create a subdirectory
+        fs::create_dir(base.join("subdir")).unwrap();
+
+        // Valid path within base directory
+        let path = base.join("subdir/file.txt");
+        let result = compute_safe_canonical_path(&path, &canonical_base);
+        assert!(result.is_ok());
+        assert!(result.unwrap().starts_with(&canonical_base));
+
+        // Valid path in non-existing nested directory
+        let path = base.join("subdir/nested/file.txt");
+        let result = compute_safe_canonical_path(&path, &canonical_base);
+        assert!(result.is_ok());
+        assert!(result.unwrap().starts_with(&canonical_base));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_compute_safe_canonical_path_detects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let base = temp_dir.path();
+        let canonical_base = base.canonicalize().unwrap();
+
+        // Create an external directory (outside base)
+        let external_dir = tempdir().unwrap();
+
+        // Create a symlink inside base that points outside
+        let symlink_path = base.join("escape_link");
+        symlink(external_dir.path(), &symlink_path).unwrap();
+
+        // Attempt to access a file through the escaping symlink
+        let path = base.join("escape_link/secret.txt");
+        let result = compute_safe_canonical_path(&path, &canonical_base);
+
+        // Should fail because symlink points outside base directory
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("symlink escaping"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_compute_safe_canonical_path_allows_internal_symlinks() {
+        use std::fs;
+        use std::os::unix::fs::symlink;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let base = temp_dir.path();
+        let canonical_base = base.canonicalize().unwrap();
+
+        // Create directories inside base
+        fs::create_dir(base.join("real_dir")).unwrap();
+
+        // Create a symlink that stays within base
+        let symlink_path = base.join("internal_link");
+        symlink(base.join("real_dir"), &symlink_path).unwrap();
+
+        // Access through internal symlink should work
+        let path = base.join("internal_link/file.txt");
+        let result = compute_safe_canonical_path(&path, &canonical_base);
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().starts_with(&canonical_base));
     }
 }

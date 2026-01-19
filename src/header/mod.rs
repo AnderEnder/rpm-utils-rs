@@ -149,7 +149,10 @@ where
         if size > MAX_HEADER_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("Header size {} exceeds maximum allowed size {}", size, MAX_HEADER_SIZE),
+                format!(
+                    "Header size {} exceeds maximum allowed size {}",
+                    size, MAX_HEADER_SIZE
+                ),
             ));
         }
 
