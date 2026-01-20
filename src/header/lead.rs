@@ -17,10 +17,7 @@ impl HeaderLead {
         fh.read_exact(&mut magic)?;
 
         if magic != MAGIC_HEADER {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Error: File is not rpm",
-            ));
+            return Err(io::Error::other("Error: File is not rpm"));
         }
 
         let mut reserved = [0_u8; 4];

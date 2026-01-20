@@ -105,10 +105,10 @@ impl FileEntry {
         reader.read_exact(&mut magic)?;
 
         if magic != MAGIC {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Error: incorrect magic of cpio entry {:x?}", magic),
-            ));
+            return Err(io::Error::other(format!(
+                "Error: incorrect magic of cpio entry {:x?}",
+                magic
+            )));
         }
 
         let ino = reader.read_hex_as_u32()?;
@@ -155,14 +155,10 @@ impl FileEntry {
         reader.read_exact(&mut name_bytes)?;
         let name = if name_size > 0 {
             let size = (name_size - 1) as usize;
-            String::from_utf8(name_bytes[0..size].to_vec()).map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Error: incorrect utf8 symbol: {}", e),
-                )
-            })?
+            String::from_utf8(name_bytes[0..size].to_vec())
+                .map_err(|e| io::Error::other(format!("Error: incorrect utf8 symbol: {}", e)))?
         } else {
-            return Err(io::Error::new(io::ErrorKind::Other, "incorrect cpio name"));
+            return Err(io::Error::other("incorrect cpio name"));
         };
 
         // aligning to 4 bytes: name +
@@ -241,22 +237,12 @@ impl TryFrom<&PathBuf> for FileEntry {
         let meta = f.metadata()?;
         let name = f
             .file_name()
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("cannot find filename from path {:?}", f),
-                )
-            })?
+            .ok_or_else(|| io::Error::other(format!("cannot find filename from path {:?}", f)))?
             .to_str()
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("cannot parse path {:?} to string", f),
-                )
-            })?
+            .ok_or_else(|| io::Error::other(format!("cannot parse path {:?} to string", f)))?
             .to_owned();
 
-        #[cfg(all(unix))]
+        #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
             Ok(FileEntry {
@@ -274,7 +260,7 @@ impl TryFrom<&PathBuf> for FileEntry {
                 rdev_minor: minor(meta.rdev() as u32),
             })
         }
-        #[cfg(all(windows))]
+        #[cfg(windows)]
         {
             // TODO: reimplement properly for Windows
             use std::os::windows::fs::MetadataExt;
@@ -407,7 +393,7 @@ pub fn extract_entry<R: Read + Seek>(
             reader.seek(io::SeekFrom::Current(position.into()))?;
         }
 
-        #[cfg(all(unix))]
+        #[cfg(unix)]
         {
             if change_owner {
                 use nix::unistd::{Gid, Uid, chown};
@@ -422,12 +408,7 @@ pub fn extract_entry<R: Read + Seek>(
                     Some(Uid::from_raw(entry.uid)),
                     Some(Gid::from_raw(entry.gid)),
                 )
-                .map_err(|e| {
-                    io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("Error: can not change owner {}", e),
-                    )
-                })?
+                .map_err(|e| io::Error::other(format!("Error: can not change owner {}", e)))?
             }
         }
 
@@ -477,10 +458,12 @@ fn io_copy_exact<R: Read, W: Write>(reader: &mut R, writer: &mut W, count: u32) 
     Ok(count)
 }
 
+#[allow(dead_code)]
 struct CpioFiles<T> {
     reader: T,
 }
 
+#[allow(dead_code)]
 impl<T: Read + Seek> CpioFiles<T> {
     pub fn new(reader: T) -> Self {
         CpioFiles { reader }
@@ -501,10 +484,12 @@ impl<T: Read + Seek> Iterator for CpioFiles<T> {
     }
 }
 
+#[allow(dead_code)]
 struct CpioEntries<T> {
     reader: T,
 }
 
+#[allow(dead_code)]
 impl<T: Read + Seek> CpioEntries<T> {
     pub fn new(reader: T) -> Self {
         CpioEntries { reader }
@@ -651,7 +636,7 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
                 }
                 writer.cpio_close()
             }
-            _ => Err(io::Error::new(io::ErrorKind::Other, "Writer not found")),
+            _ => Err(io::Error::other("Writer not found")),
         }
     }
 }

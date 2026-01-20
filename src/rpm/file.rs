@@ -78,19 +78,19 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
         let compressor: String = self
             .header_tags
             .get_value(Tag::PayloadCompressor)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Compression is not defined"))?
+            .ok_or_else(|| io::Error::other("Compression is not defined"))?
             .as_string()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Compression is not defined"))?;
+            .ok_or_else(|| io::Error::other("Compression is not defined"))?;
 
         match compressor.as_str() {
             "gzip" => Ok(Box::new(GzDecoder::new(self.file))),
             "bzip2" => Ok(Box::new(BzDecoder::new(self.file))),
             "zstd" => Ok(Box::new(Decoder::new(self.file)?)),
             "xz" | "lzma" => Ok(Box::new(XzDecoder::new(self.file))),
-            format => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Decompressor \"{}\" is not implemented", format),
-            )),
+            format => Err(io::Error::other(format!(
+                "Decompressor \"{}\" is not implemented",
+                format
+            ))),
         }
     }
 }
@@ -113,9 +113,9 @@ impl<T: 'static + Write> RPMFile<T> {
         let compressor: String = self
             .header_tags
             .get_value(Tag::PayloadCompressor)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Compression is not defined"))?
+            .ok_or_else(|| io::Error::other("Compression is not defined"))?
             .as_string()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Compression is not defined"))?;
+            .ok_or_else(|| io::Error::other("Compression is not defined"))?;
 
         match compressor.as_str() {
             "gzip" => Ok(Box::new(GzEncoder::new(
@@ -129,10 +129,10 @@ impl<T: 'static + Write> RPMFile<T> {
             "zstd" => Ok(Box::new(Encoder::new(self.file, 3)?)),
             "xz" | "lzma" => Ok(Box::new(XzEncoder::new(self.file, 3))),
 
-            format => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Decompressor \"{}\" is not implemented", format),
-            )),
+            format => Err(io::Error::other(format!(
+                "Decompressor \"{}\" is not implemented",
+                format
+            ))),
         }
     }
 }

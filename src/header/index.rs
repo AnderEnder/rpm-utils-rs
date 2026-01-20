@@ -279,12 +279,13 @@ where
         let tag_id = index
             .tag
             .to_u32()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Error: tag id is not correct"))?;
+            .ok_or_else(|| io::Error::other("Error: tag id is not correct"))?;
         self.write_be(tag_id)?;
 
-        let itype = index.itype.to_u32().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "Error: tag type is not defined")
-        })?;
+        let itype = index
+            .itype
+            .to_u32()
+            .ok_or_else(|| io::Error::other("Error: tag type is not defined"))?;
         self.write_be(itype)?;
 
         self.write_be(index.offset as u32)?;

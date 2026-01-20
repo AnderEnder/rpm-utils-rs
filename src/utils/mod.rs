@@ -48,12 +48,7 @@ where
         self.read_exact(&mut raw_bytes)?;
 
         Vec::from_hex(raw_bytes)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Error: can not parse hex {}", e),
-                )
-            })?
+            .map_err(|e| io::Error::other(format!("Error: can not parse hex {}", e)))?
             .as_slice()
             .read_be()
     }
