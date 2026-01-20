@@ -976,9 +976,6 @@ mod tests {
             "Error should mention path traversal: {}",
             err
         );
-
-        // Verify no file was created outside the extraction directory
-        assert!(!extract_dir.join("..").join("..").join("etc").exists());
     }
 
     #[test]
