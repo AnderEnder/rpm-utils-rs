@@ -2,7 +2,7 @@ use filetime::{FileTime, set_file_mtime};
 use std::convert::{TryFrom, TryInto};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::utils::{HexReader, HexWriter, align_n_bytes};
 
@@ -13,6 +13,75 @@ const TRAILER: &str = "TRAILER!!!";
 const MAX_NAME_SIZE: u32 = 4096;
 /// Maximum allowed CPIO entry file size (1 GB) - prevents OOM attacks
 const MAX_CPIO_ENTRY_SIZE: u32 = 1024 * 1024 * 1024;
+
+/// Check if a path is safe for extraction (no path traversal attempts)
+///
+/// Returns false if the path:
+/// - Contains ".." components (path traversal)
+/// - Is an absolute path (including Unix-style paths like "/etc" on Windows)
+/// - Starts with a root directory component (cross-platform absolute path detection)
+fn is_safe_path(path: &Path) -> bool {
+    let has_traversal = path.components().any(|c| matches!(c, Component::ParentDir));
+    let is_absolute = path.is_absolute();
+
+    // On Windows, is_absolute() returns false for Unix-style paths like "/etc/passwd"
+    // So we also check if the path starts with a root directory component
+    let starts_with_root = matches!(path.components().next(), Some(Component::RootDir));
+
+    !has_traversal && !is_absolute && !starts_with_root
+}
+
+/// Compute the expected canonical path without creating any filesystem entries.
+/// This walks up the path tree to find an existing ancestor, canonicalizes it,
+/// then joins the remaining path components.
+///
+/// Returns the expected canonical path and validates that all existing path
+/// components that are symlinks resolve to locations within the base directory.
+fn compute_safe_canonical_path(path: &Path, canonical_base: &Path) -> io::Result<PathBuf> {
+    // Find the deepest existing ancestor
+    let mut existing_ancestor = path.to_path_buf();
+    let mut components_to_add: Vec<std::ffi::OsString> = Vec::new();
+
+    while !existing_ancestor.exists() {
+        if let Some(file_name) = existing_ancestor.file_name() {
+            components_to_add.push(file_name.to_os_string());
+        }
+        if !existing_ancestor.pop() {
+            // We've reached the root without finding an existing path
+            // This shouldn't happen if base directory exists
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "No existing ancestor directory found",
+            ));
+        }
+    }
+
+    // Canonicalize the existing ancestor (this resolves symlinks)
+    let canonical_ancestor = existing_ancestor.canonicalize().map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Cannot canonicalize existing path: {}", e),
+        )
+    })?;
+
+    // Verify the existing ancestor is within the base directory
+    // This catches symlink attacks where an existing directory is a symlink
+    // pointing outside the extraction directory
+    if !canonical_ancestor.starts_with(canonical_base) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Path contains symlink escaping extraction directory",
+        ));
+    }
+
+    // Build the expected canonical path by adding back the non-existing components
+    let mut result = canonical_ancestor;
+    for component in components_to_add.into_iter().rev() {
+        result.push(component);
+    }
+
+    Ok(result)
+}
 
 #[derive(Debug, PartialEq)]
 pub struct FileEntry {
@@ -54,7 +123,10 @@ impl FileEntry {
         if file_size > MAX_CPIO_ENTRY_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("CPIO entry file size {} exceeds maximum allowed size {}", file_size, MAX_CPIO_ENTRY_SIZE),
+                format!(
+                    "CPIO entry file size {} exceeds maximum allowed size {}",
+                    file_size, MAX_CPIO_ENTRY_SIZE
+                ),
             ));
         }
 
@@ -68,7 +140,10 @@ impl FileEntry {
         if name_size > MAX_NAME_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("CPIO entry name size {} exceeds maximum allowed size {}", name_size, MAX_NAME_SIZE),
+                format!(
+                    "CPIO entry name size {} exceeds maximum allowed size {}",
+                    name_size, MAX_NAME_SIZE
+                ),
             ));
         }
 
@@ -266,15 +341,58 @@ pub fn extract_entry<R: Read + Seek>(
     // write content to file only if it is not a last pseudo
     if entry.name != TRAILER {
         let path = dir.join(&entry.name);
+
+        // === PATH VALIDATION (before any filesystem modifications) ===
+
+        // First check: reject paths with ".." components or absolute paths
+        if !is_safe_path(Path::new(&entry.name)) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Unsafe path in archive (potential path traversal): {}",
+                    entry.name
+                ),
+            ));
+        }
+
+        // Canonicalize the extraction directory
+        let canonical_dir = dir.canonicalize().map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Cannot canonicalize extraction directory: {}", e),
+            )
+        })?;
+
+        // Second check: compute expected canonical path and validate it stays within
+        // the extraction directory. This also detects symlink attacks where existing
+        // path components are symlinks pointing outside the extraction directory.
+        let canonical_path = compute_safe_canonical_path(&path, &canonical_dir)?;
+
+        if !canonical_path.starts_with(&canonical_dir) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Path escapes extraction directory: {}", entry.name),
+            ));
+        }
+
+        // === FILESYSTEM OPERATIONS (only after validation passes) ===
+
         let mut number = 0;
 
         if entry.nlink == 2 {
+            // Entry is a directory - create_dir_all is idempotent
             std::fs::create_dir_all(&path)?;
         } else {
-            if creates_dir {
-                let parent = path.parent();
-                if let Some(p) = parent {
-                    std::fs::create_dir_all(p)?;
+            // Entry is a file - ensure parent directory exists
+            if let Some(parent) = path.parent() {
+                if creates_dir {
+                    // create_dir_all is idempotent, no need to check existence first
+                    std::fs::create_dir_all(parent)?;
+                } else if !parent.exists() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("Parent directory does not exist: {}", parent.display()),
+                    ));
                 }
             }
 
@@ -579,13 +697,13 @@ mod tests {
             data.extend_from_slice(format!("{:08x}", val).as_bytes());
         };
 
-        write_hex(&mut data, 0);  // ino
-        write_hex(&mut data, 0);  // mode
-        write_hex(&mut data, 0);  // uid
-        write_hex(&mut data, 0);  // gid
-        write_hex(&mut data, 0);  // nlink
-        write_hex(&mut data, 0);  // mtime
-        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE + 1);  // file_size - OVERSIZED!
+        write_hex(&mut data, 0); // ino
+        write_hex(&mut data, 0); // mode
+        write_hex(&mut data, 0); // uid
+        write_hex(&mut data, 0); // gid
+        write_hex(&mut data, 0); // nlink
+        write_hex(&mut data, 0); // mtime
+        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE + 1); // file_size - OVERSIZED!
 
         let mut reader = std::io::Cursor::new(data);
         let result = FileEntry::read(&mut reader);
@@ -610,18 +728,18 @@ mod tests {
             data.extend_from_slice(format!("{:08x}", val).as_bytes());
         };
 
-        write_hex(&mut data, 0);  // ino
-        write_hex(&mut data, 0);  // mode
-        write_hex(&mut data, 0);  // uid
-        write_hex(&mut data, 0);  // gid
-        write_hex(&mut data, 0);  // nlink
-        write_hex(&mut data, 0);  // mtime
-        write_hex(&mut data, 100);  // file_size - reasonable
-        write_hex(&mut data, 0);  // dev_major
-        write_hex(&mut data, 0);  // dev_minor
-        write_hex(&mut data, 0);  // rdev_major
-        write_hex(&mut data, 0);  // rdev_minor
-        write_hex(&mut data, MAX_NAME_SIZE + 1);  // name_size - OVERSIZED!
+        write_hex(&mut data, 0); // ino
+        write_hex(&mut data, 0); // mode
+        write_hex(&mut data, 0); // uid
+        write_hex(&mut data, 0); // gid
+        write_hex(&mut data, 0); // nlink
+        write_hex(&mut data, 0); // mtime
+        write_hex(&mut data, 100); // file_size - reasonable
+        write_hex(&mut data, 0); // dev_major
+        write_hex(&mut data, 0); // dev_minor
+        write_hex(&mut data, 0); // rdev_major
+        write_hex(&mut data, 0); // rdev_minor
+        write_hex(&mut data, MAX_NAME_SIZE + 1); // name_size - OVERSIZED!
 
         let mut reader = std::io::Cursor::new(data);
         let result = FileEntry::read(&mut reader);
@@ -645,19 +763,19 @@ mod tests {
             data.extend_from_slice(format!("{:08x}", val).as_bytes());
         };
 
-        write_hex(&mut data, 0);  // ino
-        write_hex(&mut data, 0);  // mode
-        write_hex(&mut data, 0);  // uid
-        write_hex(&mut data, 0);  // gid
-        write_hex(&mut data, 0);  // nlink
-        write_hex(&mut data, 0);  // mtime
-        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE);  // file_size - at limit
-        write_hex(&mut data, 0);  // dev_major
-        write_hex(&mut data, 0);  // dev_minor
-        write_hex(&mut data, 0);  // rdev_major
-        write_hex(&mut data, 0);  // rdev_minor
-        write_hex(&mut data, MAX_NAME_SIZE);  // name_size - at limit
-        data.extend_from_slice(&[0u8; 8]);  // checksum
+        write_hex(&mut data, 0); // ino
+        write_hex(&mut data, 0); // mode
+        write_hex(&mut data, 0); // uid
+        write_hex(&mut data, 0); // gid
+        write_hex(&mut data, 0); // nlink
+        write_hex(&mut data, 0); // mtime
+        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE); // file_size - at limit
+        write_hex(&mut data, 0); // dev_major
+        write_hex(&mut data, 0); // dev_minor
+        write_hex(&mut data, 0); // rdev_major
+        write_hex(&mut data, 0); // rdev_minor
+        write_hex(&mut data, MAX_NAME_SIZE); // name_size - at limit
+        data.extend_from_slice(&[0u8; 8]); // checksum
 
         // Add name data (MAX_NAME_SIZE bytes)
         data.extend_from_slice(&vec![b'a'; MAX_NAME_SIZE as usize]);
@@ -674,5 +792,297 @@ mod tests {
                 e
             );
         }
+    }
+
+    // Path traversal security tests
+    #[test]
+    fn test_is_safe_path_rejects_parent_dir_components() {
+        // Reject paths with ".." components
+        assert!(!is_safe_path(Path::new("../../etc/passwd")));
+        assert!(!is_safe_path(Path::new("foo/../../../etc/passwd")));
+        assert!(!is_safe_path(Path::new("foo/bar/../../../etc/passwd")));
+        assert!(!is_safe_path(Path::new("../etc/passwd")));
+        assert!(!is_safe_path(Path::new("foo/..")));
+    }
+
+    #[test]
+    fn test_is_safe_path_rejects_absolute_paths() {
+        // Reject absolute paths
+        assert!(!is_safe_path(Path::new("/etc/passwd")));
+        assert!(!is_safe_path(Path::new("/tmp/test")));
+
+        // On Windows, also reject paths like C:\
+        #[cfg(windows)]
+        {
+            assert!(!is_safe_path(Path::new("C:\\Windows\\System32")));
+        }
+    }
+
+    #[test]
+    fn test_is_safe_path_accepts_valid_relative_paths() {
+        // Accept valid relative paths
+        assert!(is_safe_path(Path::new("file.txt")));
+        assert!(is_safe_path(Path::new("dir/file.txt")));
+        assert!(is_safe_path(Path::new("dir/subdir/file.txt")));
+        assert!(is_safe_path(Path::new("./file.txt")));
+        assert!(is_safe_path(Path::new("./dir/file.txt")));
+    }
+
+    #[test]
+    fn test_is_safe_path_edge_cases() {
+        // Edge cases: current directory and empty path are considered safe by is_safe_path
+        // (empty paths will fail later during extraction when file_name() returns None)
+        assert!(is_safe_path(Path::new(".")));
+        assert!(is_safe_path(Path::new("")));
+
+        // "file..txt" is safe - the ".." is part of the filename, not a ParentDir component
+        assert!(is_safe_path(Path::new("file..txt")));
+        assert!(is_safe_path(Path::new("dir/file..txt")));
+    }
+
+    #[test]
+    fn test_compute_safe_canonical_path_valid_paths() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let base = temp_dir.path();
+        let canonical_base = base.canonicalize().unwrap();
+
+        // Create a subdirectory
+        fs::create_dir(base.join("subdir")).unwrap();
+
+        // Valid path within base directory
+        let path = base.join("subdir/file.txt");
+        let result = compute_safe_canonical_path(&path, &canonical_base);
+        assert!(result.is_ok());
+        assert!(result.unwrap().starts_with(&canonical_base));
+
+        // Valid path in non-existing nested directory
+        let path = base.join("subdir/nested/file.txt");
+        let result = compute_safe_canonical_path(&path, &canonical_base);
+        assert!(result.is_ok());
+        assert!(result.unwrap().starts_with(&canonical_base));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_compute_safe_canonical_path_detects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let base = temp_dir.path();
+        let canonical_base = base.canonicalize().unwrap();
+
+        // Create an external directory (outside base)
+        let external_dir = tempdir().unwrap();
+
+        // Create a symlink inside base that points outside
+        let symlink_path = base.join("escape_link");
+        symlink(external_dir.path(), &symlink_path).unwrap();
+
+        // Attempt to access a file through the escaping symlink
+        let path = base.join("escape_link/secret.txt");
+        let result = compute_safe_canonical_path(&path, &canonical_base);
+
+        // Should fail because symlink points outside base directory
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("symlink escaping"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_compute_safe_canonical_path_allows_internal_symlinks() {
+        use std::fs;
+        use std::os::unix::fs::symlink;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let base = temp_dir.path();
+        let canonical_base = base.canonicalize().unwrap();
+
+        // Create directories inside base
+        fs::create_dir(base.join("real_dir")).unwrap();
+
+        // Create a symlink that stays within base
+        let symlink_path = base.join("internal_link");
+        symlink(base.join("real_dir"), &symlink_path).unwrap();
+
+        // Access through internal symlink should work
+        let path = base.join("internal_link/file.txt");
+        let result = compute_safe_canonical_path(&path, &canonical_base);
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().starts_with(&canonical_base));
+    }
+
+    // Integration tests for extract_entry with malicious archives
+
+    /// Helper to create a CPIO archive with a single file entry
+    fn create_cpio_archive(name: &str, content: &[u8]) -> Vec<u8> {
+        let mut archive = Vec::new();
+
+        // Write the file entry
+        let entry = FileEntry {
+            name: name.to_string(),
+            ino: 1,
+            mode: 0o100644, // regular file
+            uid: 1000,
+            gid: 1000,
+            nlink: 1,
+            mtime: 0,
+            file_size: content.len() as u32,
+            dev_major: 0,
+            dev_minor: 0,
+            rdev_major: 0,
+            rdev_minor: 0,
+        };
+        archive.write_cpio_entry(entry).unwrap();
+        archive.write_all(content).unwrap();
+        // Pad to 4-byte alignment
+        let padding = align_n_bytes(content.len() as u32, 4) as usize;
+        archive.write_all(&vec![0u8; padding]).unwrap();
+
+        // Write trailer
+        archive.write_cpio_entry(FileEntry::default()).unwrap();
+
+        archive
+    }
+
+    #[test]
+    fn test_extract_entry_rejects_path_traversal() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let extract_dir = temp_dir.path();
+
+        // Create a malicious CPIO archive with path traversal
+        let archive = create_cpio_archive("../../etc/passwd", b"malicious content");
+        let mut reader = std::io::Cursor::new(archive);
+
+        // Attempt to extract - should fail
+        let result = extract_entry(&mut reader, extract_dir, true, false);
+
+        assert!(result.is_err(), "Should reject path with '..' components");
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("path traversal"),
+            "Error should mention path traversal: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_extract_entry_rejects_absolute_path() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let extract_dir = temp_dir.path();
+
+        // Create a malicious CPIO archive with absolute path
+        let archive = create_cpio_archive("/etc/passwd", b"malicious content");
+        let mut reader = std::io::Cursor::new(archive);
+
+        // Attempt to extract - should fail
+        let result = extract_entry(&mut reader, extract_dir, true, false);
+
+        assert!(result.is_err(), "Should reject absolute path");
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("path traversal"),
+            "Error should mention path traversal: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_extract_entry_rejects_complex_traversal() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let extract_dir = temp_dir.path();
+
+        // Create a malicious CPIO archive with complex path traversal
+        // This path has valid-looking prefix but escapes via multiple ..
+        let archive = create_cpio_archive("foo/bar/../../../etc/passwd", b"malicious content");
+        let mut reader = std::io::Cursor::new(archive);
+
+        // Attempt to extract - should fail
+        let result = extract_entry(&mut reader, extract_dir, true, false);
+
+        assert!(result.is_err(), "Should reject complex path traversal");
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn test_extract_entry_accepts_valid_paths() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let extract_dir = temp_dir.path();
+
+        // Create a valid CPIO archive
+        let archive = create_cpio_archive("subdir/file.txt", b"valid content");
+        let mut reader = std::io::Cursor::new(archive);
+
+        // Extract should succeed
+        let result = extract_entry(&mut reader, extract_dir, true, false);
+        assert!(result.is_ok(), "Should accept valid relative path");
+
+        // Verify the file was created
+        let extracted_file = extract_dir.join("subdir/file.txt");
+        assert!(extracted_file.exists(), "File should be extracted");
+        let content = fs::read_to_string(&extracted_file).unwrap();
+        assert_eq!(content, "valid content");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_extract_entry_rejects_symlink_escape() {
+        use std::fs;
+        use std::os::unix::fs::symlink;
+        use tempfile::tempdir;
+
+        // Create extraction directory and an external target
+        let temp_dir = tempdir().unwrap();
+        let extract_dir = temp_dir.path().join("extract");
+        fs::create_dir(&extract_dir).unwrap();
+
+        let external_dir = tempdir().unwrap();
+        let external_file = external_dir.path().join("secret.txt");
+
+        // Create a symlink inside extract_dir pointing outside
+        let symlink_path = extract_dir.join("escape_link");
+        symlink(external_dir.path(), &symlink_path).unwrap();
+
+        // Create a CPIO archive trying to write through the symlink
+        let archive = create_cpio_archive("escape_link/secret.txt", b"malicious content");
+        let mut reader = std::io::Cursor::new(archive);
+
+        // Attempt to extract - should fail because symlink escapes
+        let result = extract_entry(&mut reader, &extract_dir, true, false);
+
+        assert!(
+            result.is_err(),
+            "Should reject path through escaping symlink"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("symlink escaping"),
+            "Error should mention symlink escape: {}",
+            err
+        );
+
+        // Verify no file was created at the external location
+        assert!(
+            !external_file.exists(),
+            "File should not be created outside extraction directory"
+        );
     }
 }
