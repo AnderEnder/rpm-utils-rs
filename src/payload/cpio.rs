@@ -380,18 +380,15 @@ pub fn extract_entry<R: Read + Seek>(
         let mut number = 0;
 
         if entry.nlink == 2 {
-            // Entry is a directory
-            if !path.exists() {
-                std::fs::create_dir_all(&path)?;
-            }
+            // Entry is a directory - create_dir_all is idempotent
+            std::fs::create_dir_all(&path)?;
         } else {
             // Entry is a file - ensure parent directory exists
-            if let Some(parent) = path.parent()
-                && !parent.exists()
-            {
+            if let Some(parent) = path.parent() {
                 if creates_dir {
+                    // create_dir_all is idempotent, no need to check existence first
                     std::fs::create_dir_all(parent)?;
-                } else {
+                } else if !parent.exists() {
                     return Err(io::Error::new(
                         io::ErrorKind::NotFound,
                         format!("Parent directory does not exist: {}", parent.display()),
