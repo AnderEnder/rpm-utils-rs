@@ -920,4 +920,175 @@ mod tests {
         assert!(result.is_ok());
         assert!(result.unwrap().starts_with(&canonical_base));
     }
+
+    // Integration tests for extract_entry with malicious archives
+
+    /// Helper to create a CPIO archive with a single file entry
+    fn create_cpio_archive(name: &str, content: &[u8]) -> Vec<u8> {
+        let mut archive = Vec::new();
+
+        // Write the file entry
+        let entry = FileEntry {
+            name: name.to_string(),
+            ino: 1,
+            mode: 0o100644, // regular file
+            uid: 1000,
+            gid: 1000,
+            nlink: 1,
+            mtime: 0,
+            file_size: content.len() as u32,
+            dev_major: 0,
+            dev_minor: 0,
+            rdev_major: 0,
+            rdev_minor: 0,
+        };
+        archive.write_cpio_entry(entry).unwrap();
+        archive.write_all(content).unwrap();
+        // Pad to 4-byte alignment
+        let padding = align_n_bytes(content.len() as u32, 4) as usize;
+        archive.write_all(&vec![0u8; padding]).unwrap();
+
+        // Write trailer
+        archive.write_cpio_entry(FileEntry::default()).unwrap();
+
+        archive
+    }
+
+    #[test]
+    fn test_extract_entry_rejects_path_traversal() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let extract_dir = temp_dir.path();
+
+        // Create a malicious CPIO archive with path traversal
+        let archive = create_cpio_archive("../../etc/passwd", b"malicious content");
+        let mut reader = std::io::Cursor::new(archive);
+
+        // Attempt to extract - should fail
+        let result = extract_entry(&mut reader, extract_dir, true, false);
+
+        assert!(result.is_err(), "Should reject path with '..' components");
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("path traversal"),
+            "Error should mention path traversal: {}",
+            err
+        );
+
+        // Verify no file was created outside the extraction directory
+        assert!(!extract_dir.join("..").join("..").join("etc").exists());
+    }
+
+    #[test]
+    fn test_extract_entry_rejects_absolute_path() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let extract_dir = temp_dir.path();
+
+        // Create a malicious CPIO archive with absolute path
+        let archive = create_cpio_archive("/etc/passwd", b"malicious content");
+        let mut reader = std::io::Cursor::new(archive);
+
+        // Attempt to extract - should fail
+        let result = extract_entry(&mut reader, extract_dir, true, false);
+
+        assert!(result.is_err(), "Should reject absolute path");
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("path traversal"),
+            "Error should mention path traversal: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_extract_entry_rejects_complex_traversal() {
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let extract_dir = temp_dir.path();
+
+        // Create a malicious CPIO archive with complex path traversal
+        // This path has valid-looking prefix but escapes via multiple ..
+        let archive = create_cpio_archive("foo/bar/../../../etc/passwd", b"malicious content");
+        let mut reader = std::io::Cursor::new(archive);
+
+        // Attempt to extract - should fail
+        let result = extract_entry(&mut reader, extract_dir, true, false);
+
+        assert!(result.is_err(), "Should reject complex path traversal");
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn test_extract_entry_accepts_valid_paths() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let extract_dir = temp_dir.path();
+
+        // Create a valid CPIO archive
+        let archive = create_cpio_archive("subdir/file.txt", b"valid content");
+        let mut reader = std::io::Cursor::new(archive);
+
+        // Extract should succeed
+        let result = extract_entry(&mut reader, extract_dir, true, false);
+        assert!(result.is_ok(), "Should accept valid relative path");
+
+        // Verify the file was created
+        let extracted_file = extract_dir.join("subdir/file.txt");
+        assert!(extracted_file.exists(), "File should be extracted");
+        let content = fs::read_to_string(&extracted_file).unwrap();
+        assert_eq!(content, "valid content");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_extract_entry_rejects_symlink_escape() {
+        use std::fs;
+        use std::os::unix::fs::symlink;
+        use tempfile::tempdir;
+
+        // Create extraction directory and an external target
+        let temp_dir = tempdir().unwrap();
+        let extract_dir = temp_dir.path().join("extract");
+        fs::create_dir(&extract_dir).unwrap();
+
+        let external_dir = tempdir().unwrap();
+        let external_file = external_dir.path().join("secret.txt");
+
+        // Create a symlink inside extract_dir pointing outside
+        let symlink_path = extract_dir.join("escape_link");
+        symlink(external_dir.path(), &symlink_path).unwrap();
+
+        // Create a CPIO archive trying to write through the symlink
+        let archive = create_cpio_archive("escape_link/secret.txt", b"malicious content");
+        let mut reader = std::io::Cursor::new(archive);
+
+        // Attempt to extract - should fail because symlink escapes
+        let result = extract_entry(&mut reader, &extract_dir, true, false);
+
+        assert!(
+            result.is_err(),
+            "Should reject path through escaping symlink"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("symlink escaping"),
+            "Error should mention symlink escape: {}",
+            err
+        );
+
+        // Verify no file was created at the external location
+        assert!(
+            !external_file.exists(),
+            "File should not be created outside extraction directory"
+        );
+    }
 }
