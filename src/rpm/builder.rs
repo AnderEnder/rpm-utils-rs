@@ -12,6 +12,7 @@ use crate::payload::FileInfo;
 use crate::header::{SignatureTag, Tag, Tags};
 use crate::lead::Lead;
 
+#[allow(dead_code)]
 struct InnerPath {
     path: String,
     user: String,
@@ -34,16 +35,21 @@ pub struct RPMBuilder {
     build_host: String,
     summary: Option<String>,
     description: Option<String>,
+    #[allow(dead_code)]
     packager: Option<String>,
+    #[allow(dead_code)]
     os: Option<String>,
+    #[allow(dead_code)]
     distribution: Option<String>,
+    #[allow(dead_code)]
     vendor: Option<String>,
+    #[allow(dead_code)]
     url: Option<String>,
     pre_install: Option<String>,
     post_install: Option<String>,
     pre_uninstall: Option<String>,
     post_uninstall: Option<String>,
-    //  BINARY, SOURCE
+    #[allow(dead_code)]
     package_type: Option<String>,
     default_user: String,
     default_group: String,
@@ -216,7 +222,7 @@ impl RPMBuilder {
     pub fn build(self) -> io::Result<RPMFile<File>> {
         let filename = self
             .filename
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No rpm file is defined"))?;
+            .ok_or_else(|| io::Error::other("No rpm file is defined"))?;
 
         let writer = OpenOptions::new()
             .create(true)

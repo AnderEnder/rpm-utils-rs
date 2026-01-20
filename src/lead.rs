@@ -36,10 +36,7 @@ impl Lead {
         fh.read_exact(&mut magic)?;
 
         if magic != MAGIC {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Error: File is not rpm",
-            ));
+            return Err(io::Error::other("Error: File is not rpm"));
         }
 
         let mut head = [0_u8; 2];
@@ -49,20 +46,16 @@ impl Lead {
         match (major, minor) {
             (3, 0) | (3, 1) | (4, 0) => {}
             _ => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!(
-                        "Error: rpm format version is not supported {}.{}",
-                        major, minor
-                    ),
-                ));
+                return Err(io::Error::other(format!(
+                    "Error: rpm format version is not supported {}.{}",
+                    major, minor
+                )));
             }
         }
 
         let rpm_type_id: u16 = fh.read_be()?;
-        let rpm_type = Type::from_u16(rpm_type_id).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "Error: can not read the rpm type")
-        })?;
+        let rpm_type = Type::from_u16(rpm_type_id)
+            .ok_or_else(|| io::Error::other("Error: can not read the rpm type"))?;
         let archnum: u16 = fh.read_be()?;
 
         let mut name = [0_u8; 66];
@@ -90,9 +83,10 @@ impl Lead {
         fh.write_all(&MAGIC)?;
         fh.write_all(&[self.major, self.minor])?;
 
-        let rpm_type = self.rpm_type.to_u16().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "Error: rpm type is not correct")
-        })?;
+        let rpm_type = self
+            .rpm_type
+            .to_u16()
+            .ok_or_else(|| io::Error::other("Error: rpm type is not correct"))?;
         fh.write_be(rpm_type)?;
         fh.write_be(self.archnum)?;
 
