@@ -26,4 +26,4 @@ log = "0.4"
 tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.30", features = ["user", "fs"] }
+nix = { version = "0.31", features = ["user", "fs"] }
