@@ -6,7 +6,7 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
-num-derive = "0.4"
+num-derive = "0.5"
 num-traits = "0.2"
 strum_macros = "0.28.0"
 chrono = "0.4"
