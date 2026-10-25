@@ -613,3 +613,115 @@ fn excessive_file_counts_are_reported_before_expanding_file_names() -> io::Resul
     assert!(RPMEditor::open(bad).is_err());
     Ok(())
 }
+
+#[test]
+fn edit_previews_match_real_saves_without_modifying_input() -> io::Result<()> {
+    for compressor in ["gzip", "bzip2", "xz", "lzma", "zstd", "none"] {
+        let directory = tempdir()?;
+        let input = package(directory.path(), compressor)?;
+        let original = std::fs::read(&input)?;
+        let replacement = directory.path().join("replacement");
+        std::fs::write(&replacement, b"preview contents")?;
+        let configure = || -> io::Result<RPMEditor> {
+            let mut editor = RPMEditor::open(&input)?;
+            editor.set_text(1004, "Preview summary")?;
+            editor.replace_file("/usr/share/test/file", &replacement)?;
+            editor.set_file_mode("/usr/share/test/file", 0o700)?;
+            Ok(editor)
+        };
+        let preview = configure()?.preview()?;
+        assert!(preview.payload_changed);
+        assert_eq!(std::fs::read(&input)?, original);
+        let output = directory.path().join("saved.rpm");
+        let saved = configure()?.save(&output)?;
+        let changes = rpm_utils::diff_rpm(&input, &output)?;
+        assert_eq!(
+            serde_json::to_value(&preview.changes)?,
+            serde_json::to_value(changes)?
+        );
+        assert_eq!(preview.removed_signatures, saved.removed_signatures);
+        assert_eq!(preview.changes.files.len(), 1);
+        assert_eq!(std::fs::read(&input)?, original);
+    }
+    Ok(())
+}
+
+#[test]
+fn metadata_preview_reports_signature_removal_without_changing_signed_input() -> io::Result<()> {
+    let directory = tempdir()?;
+    let input = package(directory.path(), "gzip")?;
+    let signed = directory.path().join("signed.rpm");
+    variant(&input, &signed, |signature, _| {
+        signature.set(RawTag::new(268, Type::Bin, 3, vec![1, 2, 3])?)
+    })?;
+    let original = std::fs::read(&signed)?;
+    let mut editor = RPMEditor::open(&signed)?;
+    editor.set_text(1004, "Changed")?;
+    let preview = editor.preview()?;
+    assert!(!preview.payload_changed);
+    assert_eq!(preview.removed_signatures, [268]);
+    assert!(preview.changes.files.is_empty());
+    assert!(
+        preview
+            .changes
+            .signatures
+            .iter()
+            .any(|tag| tag.id == 268 && tag.after.is_none())
+    );
+    assert_eq!(std::fs::read(&signed)?, original);
+    Ok(())
+}
+
+#[test]
+fn dry_run_cli_never_writes_requested_paths_and_validates_results() -> io::Result<()> {
+    use std::process::Command;
+    let directory = tempdir()?;
+    let input = package(directory.path(), "none")?;
+    let original = std::fs::read(&input)?;
+    let output = directory.path().join("output.rpm");
+    std::fs::write(&output, b"preserve destination")?;
+    let bin = env!("CARGO_BIN_EXE_rpm-edit");
+    let preview = Command::new(bin)
+        .arg(&input)
+        .args(["--dry-run", "--json", "--set", "summary=preview"])
+        .arg("--output")
+        .arg(&output)
+        .output()?;
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&preview.stdout)?;
+    assert_eq!(value["payload_changed"], false);
+    assert!(
+        value["changes"]["metadata"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tag| tag["id"] == 1004)
+    );
+    assert_eq!(std::fs::read(&output)?, b"preserve destination");
+    let in_place = Command::new(bin)
+        .arg(&input)
+        .args(["--dry-run", "--in-place", "--set", "summary=preview"])
+        .output()?;
+    assert!(in_place.status.success());
+    let no_output = Command::new(bin)
+        .arg(&input)
+        .args(["--dry-run", "--set", "summary=preview"])
+        .output()?;
+    assert!(no_output.status.success());
+    let missing_output = directory.path().join("never-created.rpm");
+    let failure = Command::new(bin)
+        .arg(&input)
+        .args(["--dry-run", "--set", "name="])
+        .arg("--output")
+        .arg(&missing_output)
+        .output()?;
+    assert!(!failure.status.success());
+    assert!(!missing_output.exists());
+    assert_eq!(std::fs::read(&input)?, original);
+    assert_eq!(std::fs::read(&output)?, b"preserve destination");
+    Ok(())
+}

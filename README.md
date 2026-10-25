@@ -140,3 +140,9 @@ Compare package metadata and installed file content (exit 1 when different):
 rpm-diff original.rpm modified.rpm
 rpm-diff original.rpm modified.rpm --json
 ```
+
+Preview and validate edits without writing a package:
+
+```sh
+rpm-edit original.rpm --set summary="Updated summary" --dry-run --json
+```

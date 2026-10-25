@@ -14,7 +14,7 @@ struct Args {
     #[arg(
         short,
         long,
-        required_unless_present = "in_place",
+        required_unless_present_any = ["in_place", "dry_run"],
         conflicts_with = "in_place"
     )]
     output: Option<PathBuf>,
@@ -40,6 +40,9 @@ struct Args {
     /// Change file or directory permissions, e.g. /usr/bin/tool=0755
     #[arg(long, value_name = "PACKAGE_PATH=OCTAL")]
     chmod: Vec<String>,
+    /// Build and validate a preview without writing input or output paths
+    #[arg(long)]
+    dry_run: bool,
     /// Print a machine-readable edit report
     #[arg(long)]
     json: bool,
@@ -105,6 +108,41 @@ fn run(args: Args) -> io::Result<()> {
         let mode = u32::from_str_radix(mode.strip_prefix("0o").unwrap_or(mode), 8)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Invalid octal mode"))?;
         editor.set_file_mode(path, mode)?;
+    }
+    if args.dry_run {
+        let preview = editor.preview()?;
+        if args.json {
+            println!("{}", serde_json::to_string_pretty(&preview)?);
+        } else {
+            println!("Validated preview (no package written)");
+            for tag in &preview.changes.metadata {
+                println!("Metadata tag {} changed", tag.id);
+            }
+            for tag in &preview.changes.signatures {
+                println!("Signature tag {} changed", tag.id);
+            }
+            for file in &preview.changes.files {
+                let action = match (&file.before, &file.after) {
+                    (None, _) => "Added",
+                    (_, None) => "Removed",
+                    _ => "Changed",
+                };
+                println!("{action} {}", file.path);
+            }
+            if !preview.removed_signatures.is_empty() {
+                println!(
+                    "Would remove OpenPGP signature tags: {:?}",
+                    preview.removed_signatures
+                );
+            }
+            if !preview.removed_file_signatures.is_empty() {
+                println!(
+                    "Would remove file-content signature tags: {:?}",
+                    preview.removed_file_signatures
+                );
+            }
+        }
+        return Ok(());
     }
     let output = args.output.as_ref().unwrap_or(&args.input);
     let report = editor.save(output)?;

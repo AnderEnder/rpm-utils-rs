@@ -43,6 +43,28 @@ existing destination untouched. Output filesystem permissions follow the existin
 destination, or the input when creating a new file. Source and destination files should not be
 concurrently modified by another process.
 
+## Edit previews
+
+```sh
+rpm-edit input.rpm --set summary="Updated summary" --dry-run
+rpm-edit input.rpm --replace-file /usr/bin/tool=target/release/tool --dry-run --json
+```
+
+`RPMEditor::preview()` consumes the configured editor, builds the proposed package
+in temporary storage, runs the same validation as `save()`, and returns an
+`EditPreview` with the value comparison and signature-removal report. The JSON
+`changes` object has the same shape as `rpm-diff --json`. Text output summarizes
+changed tag IDs and added, removed or changed paths; JSON includes before/after
+values. Even a preview without explicit edits can report normalized metadata or
+signature removal because saving regenerates the unsigned package.
+
+`--dry-run` does not require `--output` or `--in-place`. If either is supplied,
+the requested path is left untouched. A successful preview exits 0 even when
+changes are reported; invalid edits fail as they would during a save. Input,
+replacement content and scratch output are read or staged on disk; this is a full
+build and validation, so allow time and temporary disk space for large packages.
+Temporary packages are removed when the preview finishes or fails.
+
 ## Preservation and signatures
 
 `RawHeader` and `RawTag` preserve unknown IDs, types, counts and network-order

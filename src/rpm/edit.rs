@@ -28,6 +28,14 @@ pub struct EditReport {
     pub removed_signatures: Vec<u32>,
     pub removed_file_signatures: Vec<u32>,
 }
+/// A validated edit preview. All temporary package files are removed on return.
+#[derive(Debug, serde::Serialize)]
+pub struct EditPreview {
+    pub payload_changed: bool,
+    pub removed_signatures: Vec<u32>,
+    pub removed_file_signatures: Vec<u32>,
+    pub changes: super::DiffReport,
+}
 impl RPMEditor {
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let package = Package::open(path.as_ref())?;
@@ -251,6 +259,24 @@ impl RPMEditor {
         }
         self.payload_changed = true;
         Ok(self)
+    }
+    /// Build and validate an edit in scratch storage, then compare it with the
+    /// original package. No input or caller-specified output path is modified.
+    /// This consumes the editor and applies the same checks as `save()`.
+    pub fn preview(mut self) -> io::Result<EditPreview> {
+        let directory = tempfile::tempdir()?;
+        let original = directory.path().join("original.rpm");
+        let edited = directory.path().join("edited.rpm");
+        self.package.file.rewind()?;
+        io::copy(&mut self.package.file, &mut File::create(&original)?)?;
+        let report = self.save(&edited)?;
+        let changes = super::diff_rpm(&original, &edited)?;
+        Ok(EditPreview {
+            payload_changed: report.payload_changed,
+            removed_signatures: report.removed_signatures,
+            removed_file_signatures: report.removed_file_signatures,
+            changes,
+        })
     }
     /// Regenerate integrity information and publish atomically. Existing OpenPGP
     /// signatures are dropped; payload bytes are preserved for metadata-only edits.
