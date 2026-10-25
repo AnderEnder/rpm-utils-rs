@@ -270,3 +270,30 @@ fn crc_archives_validate_checksums_on_read_write_and_extraction() -> io::Result<
     );
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn source_size_validation_uses_the_newc_format_limit() -> io::Result<()> {
+    let directory = tempdir()?;
+    let path = directory.path().join("sparse");
+    let file = std::fs::File::create(&path)?;
+    file.set_len(u64::from(u32::MAX))?;
+    let entry = FileEntry::try_from(&path)?;
+    assert_eq!(entry.file_size, u32::MAX);
+    let metadata = file.metadata()?;
+    use std::os::unix::fs::MetadataExt;
+    assert_eq!(
+        entry.dev_major,
+        nix::libc::major(metadata.dev() as nix::libc::dev_t) as u32
+    );
+    assert_eq!(
+        entry.dev_minor,
+        nix::libc::minor(metadata.dev() as nix::libc::dev_t) as u32
+    );
+    file.set_len(u64::from(u32::MAX) + 1)?;
+    assert_eq!(
+        FileEntry::try_from(&path).unwrap_err().kind(),
+        io::ErrorKind::InvalidInput
+    );
+    Ok(())
+}

@@ -13,8 +13,6 @@ const TRAILER: &str = "TRAILER!!!";
 
 /// Maximum allowed CPIO entry name size (4 KB) - prevents OOM attacks
 const MAX_NAME_SIZE: u32 = 4096;
-/// Maximum allowed CPIO entry file size (1 GB) - prevents OOM attacks
-const MAX_CPIO_ENTRY_SIZE: u32 = 1024 * 1024 * 1024;
 
 /// Check if a path is safe for extraction (no path traversal attempts)
 ///
@@ -129,17 +127,6 @@ impl FileEntry {
         let mtime = reader.read_hex_as_u32()?;
         let file_size = reader.read_hex_as_u32()?;
 
-        // Validate file size to prevent OOM attacks
-        if file_size > MAX_CPIO_ENTRY_SIZE {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "CPIO entry file size {} exceeds maximum allowed size {}",
-                    file_size, MAX_CPIO_ENTRY_SIZE
-                ),
-            ));
-        }
-
         let dev_major = reader.read_hex_as_u32()?;
         let dev_minor = reader.read_hex_as_u32()?;
         let rdev_major = reader.read_hex_as_u32()?;
@@ -226,8 +213,8 @@ impl FileEntry {
         if self.name.is_empty()
             || self.name.contains('\0')
             || self.name.len() >= MAX_NAME_SIZE as usize
-            || self.file_size > MAX_CPIO_ENTRY_SIZE
             || (self.name == TRAILER && self.file_size != 0)
+            || (self.file_size == 0 && self.checksum.is_some_and(|value| value != 0))
         {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -304,16 +291,9 @@ impl TryFrom<&PathBuf> for FileEntry {
             } else {
                 meta.len()
             };
-            let size = u32::try_from(length).map_err(|_| {
+            u32::try_from(length).map_err(|_| {
                 io::Error::new(io::ErrorKind::InvalidInput, "CPIO file is too large")
-            })?;
-            if size > MAX_CPIO_ENTRY_SIZE {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "CPIO file is too large",
-                ));
-            }
-            size
+            })?
         };
         let name = f
             .file_name()
@@ -332,12 +312,14 @@ impl TryFrom<&PathBuf> for FileEntry {
                 uid: meta.uid(),
                 gid: meta.gid(),
                 nlink: meta.nlink() as u32,
-                mtime: meta.mtime() as u32,
+                mtime: u32::try_from(meta.mtime()).map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "CPIO timestamp must fit u32")
+                })?,
                 file_size,
-                dev_major: major(meta.dev() as u32),
-                dev_minor: minor(meta.dev() as u32),
-                rdev_major: major(meta.rdev() as u32),
-                rdev_minor: minor(meta.rdev() as u32),
+                dev_major: nix::libc::major(meta.dev() as nix::libc::dev_t) as u32,
+                dev_minor: nix::libc::minor(meta.dev() as nix::libc::dev_t) as u32,
+                rdev_major: nix::libc::major(meta.rdev() as nix::libc::dev_t) as u32,
+                rdev_minor: nix::libc::minor(meta.rdev() as nix::libc::dev_t) as u32,
                 checksum: None,
             })
         }
@@ -370,14 +352,6 @@ impl TryFrom<&PathBuf> for FileEntry {
             })
         }
     }
-}
-
-fn major(x: u32) -> u32 {
-    (x >> 8) & 0x7F
-}
-
-fn minor(x: u32) -> u32 {
-    x & 0xFF
 }
 
 pub fn read_entries<R: Read>(reader: &mut R) -> io::Result<Vec<FileEntry>> {
@@ -866,8 +840,8 @@ where
     }
 
     fn write_cpio_entry_payload<R: Read>(&mut self, reader: &mut R) -> io::Result<()> {
-        let file_size = io::copy(reader, self)? as u32;
-        let number = align_n_bytes(file_size, 4) as usize;
+        let file_size = io::copy(reader, self)?;
+        let number = ((4 - file_size % 4) % 4) as usize;
         let pad = vec![0_u8; number];
         self.write_all(&pad)
     }
@@ -947,34 +921,20 @@ mod tests {
 
     // Buffer size limit security tests
     #[test]
-    fn test_cpio_rejects_oversized_file() {
-        // Create CPIO data with file_size exceeding MAX_CPIO_ENTRY_SIZE
-        let mut data = Vec::new();
-
-        // Write magic
-        data.extend_from_slice(b"070701");
-
-        // Write header fields as hex (8 chars each)
-        let write_hex = |data: &mut Vec<u8>, val: u32| {
-            data.extend_from_slice(format!("{:08x}", val).as_bytes());
-        };
-
-        write_hex(&mut data, 0); // ino
-        write_hex(&mut data, 0); // mode
-        write_hex(&mut data, 0); // uid
-        write_hex(&mut data, 0); // gid
-        write_hex(&mut data, 0); // nlink
-        write_hex(&mut data, 0); // mtime
-        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE + 1); // file_size - OVERSIZED!
-
-        let mut reader = std::io::Cursor::new(data);
-        let result = FileEntry::read(&mut reader);
-
-        assert!(result.is_err(), "Should reject oversized file");
-        let err = result.unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-        assert!(err.to_string().contains("file size"));
-        assert!(err.to_string().contains("exceeds maximum"));
+    fn test_cpio_accepts_full_32_bit_file_sizes_without_allocating_payload() {
+        let mut bytes = Vec::new();
+        bytes
+            .write_cpio_entry(FileEntry {
+                name: "large".into(),
+                mode: 0o100644,
+                file_size: u32::MAX,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            FileEntry::read(&mut bytes.as_slice()).unwrap().file_size,
+            u32::MAX
+        );
     }
 
     #[test]
@@ -1031,7 +991,7 @@ mod tests {
         write_hex(&mut data, 0); // gid
         write_hex(&mut data, 0); // nlink
         write_hex(&mut data, 0); // mtime
-        write_hex(&mut data, MAX_CPIO_ENTRY_SIZE); // file_size - at limit
+        write_hex(&mut data, u32::MAX); // file_size - at limit
         write_hex(&mut data, 0); // dev_major
         write_hex(&mut data, 0); // dev_minor
         write_hex(&mut data, 0); // rdev_major

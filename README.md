@@ -75,7 +75,10 @@ constructing entries that do not require a checksum.
 CPIO supports regular files and directory entries, plus symbolic links on Unix.
 Extraction reconstructs hard-link groups and restores directory metadata after
 children are extracted. Readers work with streams, including decompressor output.
-Special files return an unsupported-type error; extraction requires a destination
+Entry sizes use the full 32-bit newc range (up to 4 GiB minus one byte) without
+buffering whole files. Larger files require RPM's separate `07070X` payload format,
+which is not implemented. Special files return an unsupported-type error;
+extraction requires a destination
 directory that other processes cannot modify concurrently.
 RPM epochs use `u32` throughout the metadata API. Metadata conversion preserves
 file lists and their digest algorithm; use `RPMInfo::try_into_rpm()` to report
