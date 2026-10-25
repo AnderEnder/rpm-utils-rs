@@ -133,3 +133,10 @@ This is an experimental project. APIs may change without notice.
 ## License
 
 No license file has been provided in this repository.
+
+Compare package metadata and installed file content (exit 1 when different):
+
+```sh
+rpm-diff original.rpm modified.rpm
+rpm-diff original.rpm modified.rpm --json
+```

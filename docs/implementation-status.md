@@ -31,6 +31,9 @@ Reviewed and tested on 2026-10-25.
   add or remove regular files, and change installed permissions. Unknown metadata
   and other translations are preserved. Metadata-only edits preserve compressed
   payload bytes; changed packages get fresh digests and are unsigned.
+- **Comparison:** `diff_rpm` and `rpm-diff` compare raw metadata/signature values
+  and actual installed content, including modes, ownership and hardlink groups.
+  Text and JSON reports use deterministic tag/path order.
 - **Lint and repair:** `lint_rpm`, `repair_rpm` and `rpm-lint` expose structured
   diagnostics, JSON output and atomic repair of reconstructable values. Ambiguous
   content, ownership and mode errors are refused; clean signed inputs are copied
@@ -39,7 +42,7 @@ Reviewed and tested on 2026-10-25.
 ## Validation
 
 `cargo test --locked --all-targets`, `cargo fmt --check`, strict Clippy, and
-`git diff --check` pass on macOS (101 tests). Regression tests independently inspect region
+`git diff --check` pass on macOS (105 tests). Regression tests independently inspect region
 trailers and digest values, exercise all six compressor choices, cover damaged
 packages and failure preservation, and check extraction contents and inode/link
 behavior. The system libarchive reader can read generated RPM packages. An

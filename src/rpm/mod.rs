@@ -1,4 +1,5 @@
 mod builder;
+mod diff;
 mod edit;
 mod file;
 mod info;
@@ -7,6 +8,7 @@ mod package;
 mod verify;
 
 pub use builder::*;
+pub use diff::*;
 pub use edit::*;
 pub use file::*;
 pub use info::*;

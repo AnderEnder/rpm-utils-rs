@@ -112,3 +112,27 @@ and were readable by the system libarchive tool:
 The packages were downloaded into temporary directories for these checks and are
 not redistributed in this repository. No package was installed or executed, and
 its OpenPGP signature was not authenticated.
+
+## Package comparison
+
+```sh
+rpm-diff before.rpm after.rpm
+rpm-diff before.rpm after.rpm --json
+```
+
+`diff_rpm(before, after)` compares every metadata and signature tag by ID, type,
+count and exact value bytes, including unknown tags and all translations. JSON
+contains complete before/after values as hex. File changes are sorted by installed
+path and include additions/removals, declared size, ownership, permissions, flags,
+mtime, symlink targets, and SHA-256 of actual decompressed contents. Hardlink
+membership is represented by a SHA-256 fingerprint of the sorted, length-prefixed
+installed paths, independent of archive inode numbering. Ghost files have metadata
+and no payload content. Duplicate tag IDs or inventory paths are refused.
+
+The CLI exits 0 for equal values, 1 for differences, and 2 for errors. It compares
+values rather than byte-for-byte package identity: lead fields, padding, index
+order, and compressed byte streams are excluded. Generated digests and file tables
+are included in raw tag differences, so one edit can change several tag IDs.
+Inspection does not authenticate signatures or validate declared digests; use
+`rpm-lint` or integrity verification separately. Payloads are decompressed to
+scratch files; package content is never executed or extracted into installed paths.
