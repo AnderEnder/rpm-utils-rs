@@ -39,6 +39,9 @@ impl RawTag {
         self.numbers().ok()?.first().copied()
     }
     pub fn numbers(&self) -> io::Result<Vec<u64>> {
+        if self.count as usize > MAX_HEADER_SIZE / 8 {
+            return Err(invalid("Decoded numeric array exceeds resource limit"));
+        }
         let width = match self.kind {
             Type::Char | Type::Int8 => 1,
             Type::Int16 => 2,
@@ -58,6 +61,9 @@ impl RawTag {
             .collect())
     }
     pub fn strings(&self) -> io::Result<Vec<String>> {
+        if self.count as usize > MAX_HEADER_SIZE / 16 {
+            return Err(invalid("Decoded string array exceeds resource limit"));
+        }
         if !matches!(
             self.kind,
             Type::String | Type::StringArray | Type::I18nstring
@@ -116,6 +122,7 @@ impl RawHeader {
         let mut data = vec![0; lead.hsize as usize];
         reader.read_exact(&mut data)?;
         let mut entries = Vec::new();
+        let mut value_bytes = 0_usize;
         let mut offsets = Vec::new();
         for index in indexes.as_chunks::<16>().0 {
             let number = |offset| {
@@ -134,6 +141,12 @@ impl RawHeader {
                 .get(offset as usize..)
                 .ok_or_else(|| invalid("RPM tag offset exceeds header"))?;
             let length = value_len(&kind, count, tail)?;
+            value_bytes = value_bytes
+                .checked_add(length)
+                .ok_or_else(|| invalid("Header value size overflow"))?;
+            if value_bytes > MAX_HEADER_SIZE {
+                return Err(invalid("Expanded RPM tag values exceed header limit"));
+            }
             entries.push(RawTag {
                 id,
                 kind,

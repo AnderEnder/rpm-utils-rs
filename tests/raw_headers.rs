@@ -32,3 +32,21 @@ fn refuses_ambiguous_duplicates_and_invalid_lengths() -> io::Result<()> {
     assert!(header.encode_region(63).is_err());
     Ok(())
 }
+
+#[test]
+fn overlapping_values_cannot_expand_parser_memory_without_bound() -> io::Result<()> {
+    let length = 17 * 1024 * 1024_u32;
+    let mut bytes = Vec::new();
+    rpm_utils::header::HeaderLead::from(2, length).write(&mut bytes)?;
+    for id in [65000_u32, 65001] {
+        for value in [id, 7, 0, length] {
+            bytes.extend_from_slice(&value.to_be_bytes());
+        }
+    }
+    bytes.resize(bytes.len() + length as usize, 0);
+    assert_eq!(
+        RawHeader::read(&mut bytes.as_slice()).unwrap_err().kind(),
+        io::ErrorKind::InvalidData
+    );
+    Ok(())
+}
