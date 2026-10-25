@@ -53,15 +53,15 @@ impl Lead {
             }
         }
 
-        let rpm_type_id: u16 = fh.read_be()?;
+        let rpm_type_id: u16 = omnom::ReadExt::read_be(fh)?;
         let rpm_type = Type::from_u16(rpm_type_id)
             .ok_or_else(|| io::Error::other("Error: can not read the rpm type"))?;
-        let archnum: u16 = fh.read_be()?;
+        let archnum: u16 = omnom::ReadExt::read_be(fh)?;
 
         let mut name = [0_u8; 66];
         fh.read_exact(&mut name)?;
-        let osnum: u16 = fh.read_be()?;
-        let signature_type: u16 = fh.read_be()?;
+        let osnum: u16 = omnom::ReadExt::read_be(fh)?;
+        let signature_type: u16 = omnom::ReadExt::read_be(fh)?;
 
         let mut reserved = [0_u8; 16];
         fh.read_exact(&mut reserved)?;
@@ -138,7 +138,7 @@ impl fmt::Debug for Lead {
         writeln!(f, "minor: {}", self.minor)?;
         writeln!(f, "rpm_type: {}", self.rpm_type)?;
         writeln!(f, "archnum: {}", self.archnum)?;
-        writeln!(f, "name: {:?}", &&self.name[..])?;
+        writeln!(f, "name: {:?}", &self.name[..])?;
         writeln!(f, "osnum: {}", self.osnum)?;
         writeln!(f, "signature_type: {}", self.signature_type)?;
         writeln!(f, "reserved: {:?}", self.reserved)
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn test_lead_read_write_smoke() {
         let mut name = [0_u8; 66];
-        "testname".as_bytes().read(&mut name).unwrap();
+        name[..8].copy_from_slice(b"testname");
 
         let lead = Lead {
             name,

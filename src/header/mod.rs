@@ -9,14 +9,13 @@ pub use tags::*;
 use num_traits::{FromPrimitive, ToPrimitive};
 use omnom::ReadBytes;
 use omnom::prelude::*;
-use std::char;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::hash::Hash;
 use std::io::{self, Read, Seek, Write};
 use std::mem::size_of;
 
-use crate::utils::{align_n_bytes, parse_string, parse_strings};
+use crate::utils::align_n_bytes;
 
 /// Maximum allowed header size (32 MB) - prevents OOM attacks from malicious RPM files
 const MAX_HEADER_SIZE: usize = 32 * 1024 * 1024;
@@ -163,48 +162,64 @@ where
     }
 
     fn tags_from_raw(indexes: &[Index<T>], data: &[u8]) -> io::Result<Self> {
-        let tags = (0..indexes.len())
-            .map(|i| {
-                let item = &indexes[i];
-                let ps = item.offset;
-
+        let tags = indexes
+            .iter()
+            .map(|item| {
+                let tail = data.get(item.offset..).ok_or_else(invalid_tag_data)?;
                 let tag_value = match item.itype {
                     Type::Null => RType::Null,
                     Type::Char => {
-                        let c_byte = (&data[ps..]).read_be()?;
-                        let c = char::from_u32(c_byte).unwrap_or_default();
-                        RType::Char(c)
+                        if item.count != 1 {
+                            return Err(invalid_tag_data());
+                        }
+                        RType::Char(char::from(*tail.first().ok_or_else(invalid_tag_data)?))
                     }
-                    Type::Int8 => extract(data, ps, item.count, RType::Int8, RType::Int8Array)?,
-                    Type::Int16 => extract(data, ps, item.count, RType::Int16, RType::Int16Array)?,
-                    Type::Int32 => extract(data, ps, item.count, RType::Int32, RType::Int32Array)?,
-                    Type::Int64 => extract(data, ps, item.count, RType::Int64, RType::Int64Array)?,
-
+                    Type::Int8 => {
+                        extract(data, item.offset, item.count, RType::Int8, RType::Int8Array)?
+                    }
+                    Type::Int16 => extract(
+                        data,
+                        item.offset,
+                        item.count,
+                        RType::Int16,
+                        RType::Int16Array,
+                    )?,
+                    Type::Int32 => extract(
+                        data,
+                        item.offset,
+                        item.count,
+                        RType::Int32,
+                        RType::Int32Array,
+                    )?,
+                    Type::Int64 => extract(
+                        data,
+                        item.offset,
+                        item.count,
+                        RType::Int64,
+                        RType::Int64Array,
+                    )?,
                     Type::String => {
-                        let ps2 = indexes[i + 1].offset;
-                        let v = parse_string(&data[ps..ps2]);
-                        RType::String(v)
+                        if item.count != 1 {
+                            return Err(invalid_tag_data());
+                        }
+                        RType::String(read_strings(tail, 1)?.remove(0))
                     }
-
-                    Type::Bin => {
-                        let ps2 = ps + item.count;
-                        let bytes = &data[ps..ps2];
-                        RType::Bin(bytes.to_vec())
-                    }
-
-                    Type::StringArray => {
-                        let ps2 = indexes[i + 1].offset;
-                        let v = parse_strings(&data[ps..ps2], item.count);
-                        RType::StringArray(v)
-                    }
-
+                    Type::Bin => RType::Bin(
+                        tail.get(..item.count)
+                            .ok_or_else(invalid_tag_data)?
+                            .to_vec(),
+                    ),
+                    Type::StringArray => RType::StringArray(read_strings(tail, item.count)?),
                     Type::I18nstring => {
-                        let ps2 = indexes[i + 1].offset;
-                        let v = parse_string(&data[ps..ps2]);
-                        RType::I18nstring(v)
+                        // The public model exposes the first translation only.
+                        RType::I18nstring(
+                            read_strings(tail, item.count)?
+                                .into_iter()
+                                .next()
+                                .unwrap_or_default(),
+                        )
                     }
                 };
-
                 Ok((item.tag, tag_value))
             })
             .collect::<io::Result<HashMap<_, _>>>()?;
@@ -217,8 +232,8 @@ impl Tags<Tag> {
         self.insert(Tag::Name, RType::String(name))
     }
 
-    pub fn insert_epoch(&mut self, epoch: u8) -> &mut Self {
-        self.insert(Tag::Epoch, RType::Int8(epoch))
+    pub fn insert_epoch(&mut self, epoch: u32) -> &mut Self {
+        self.insert(Tag::Epoch, RType::Int32(epoch))
     }
 
     pub fn insert_version(&mut self, version: String) -> &mut Self {
@@ -314,7 +329,19 @@ where
         let mut data: Vec<u8> = Vec::new();
         let index = tags.0.len();
 
-        for (tag, value) in &tags.0 {
+        let mut sorted_tags: Vec<_> = tags.0.iter().collect();
+        sorted_tags.sort_by_key(|(tag, _)| tag.to_u32());
+        for (tag, value) in sorted_tags {
+            let alignment = match value {
+                RType::Int16(_) | RType::Int16Array(_) => 2,
+                RType::Int32(_) | RType::Int32Array(_) => 4,
+                RType::Int64(_) | RType::Int64Array(_) => 8,
+                _ => 1,
+            };
+            data.resize(
+                data.len() + align_n_bytes(data.len() as u32, alignment) as usize,
+                0,
+            );
             let current = data.len();
             match value {
                 RType::Null => {
@@ -323,7 +350,10 @@ where
                 }
 
                 RType::Char(c) => {
-                    data.write_be(*c as u32)?;
+                    let byte = u8::try_from(*c as u32).map_err(|_| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "RPM char must fit in one byte")
+                    })?;
+                    data.write_be(byte)?;
                     let index = Index::from(tag, value, current, 1);
                     address.write_index(index)?;
                 }
@@ -361,7 +391,7 @@ where
 
                 RType::Bin(b) => {
                     data.write_all(b)?;
-                    let index = Index::from(tag, value, current, 1);
+                    let index = Index::from(tag, value, current, b.len());
                     address.write_index(index)?;
                 }
 
@@ -422,13 +452,31 @@ where
         self.write_all(&address)?;
         self.write_all(&data)?;
 
-        // aligning to 8 bytes
-        let number = align_n_bytes(size, 8) as usize;
-        let pad = vec![0_u8; number];
-        self.write_all(&pad)?;
-
         Ok(())
     }
+}
+
+fn invalid_tag_data() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "Invalid RPM tag offset, count or data",
+    )
+}
+
+fn read_strings(mut bytes: &[u8], count: usize) -> io::Result<Vec<String>> {
+    if count > bytes.len() {
+        return Err(invalid_tag_data());
+    }
+    let mut strings = Vec::new();
+    for _ in 0..count {
+        let end = bytes
+            .iter()
+            .position(|b| *b == 0)
+            .ok_or_else(invalid_tag_data)?;
+        strings.push(String::from_utf8_lossy(&bytes[..end]).into_owned());
+        bytes = &bytes[end + 1..];
+    }
+    Ok(strings)
 }
 
 fn extract<T: ReadBytes>(
@@ -438,16 +486,20 @@ fn extract<T: ReadBytes>(
     single: fn(T) -> RType,
     multiple: fn(Vec<T>) -> RType,
 ) -> io::Result<RType> {
-    if count > 1 {
+    let length = count
+        .checked_mul(size_of::<T>())
+        .ok_or_else(invalid_tag_data)?;
+    let mut bytes = data
+        .get(position..)
+        .and_then(|tail| tail.get(..length))
+        .ok_or_else(invalid_tag_data)?;
+    if count == 1 {
+        Ok(single(omnom::ReadExt::read_be(&mut bytes)?))
+    } else {
         let values = (0..count)
-            .map(|i| {
-                let pos = position + i * size_of::<T>();
-                (&data[pos..]).read_be()
-            })
+            .map(|_| omnom::ReadExt::read_be(&mut bytes))
             .collect::<io::Result<Vec<T>>>()?;
         Ok(multiple(values))
-    } else {
-        Ok(single((&data[position..]).read_be()?))
     }
 }
 

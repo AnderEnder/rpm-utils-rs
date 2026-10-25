@@ -6,6 +6,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use xz2::read::XzDecoder;
+use xz2::stream::{LzmaOptions, Stream};
 use xz2::write::XzEncoder;
 use zstd::stream::read::Decoder;
 use zstd::stream::write::Encoder;
@@ -86,7 +87,12 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
             "gzip" => Ok(Box::new(GzDecoder::new(self.file))),
             "bzip2" => Ok(Box::new(BzDecoder::new(self.file))),
             "zstd" => Ok(Box::new(Decoder::new(self.file)?)),
-            "xz" | "lzma" => Ok(Box::new(XzDecoder::new(self.file))),
+            "xz" => Ok(Box::new(XzDecoder::new(self.file))),
+            "lzma" => Ok(Box::new(XzDecoder::new_stream(
+                self.file,
+                Stream::new_lzma_decoder(u64::MAX)?,
+            ))),
+            "none" => Ok(Box::new(self.file)),
             format => Err(io::Error::other(format!(
                 "Decompressor \"{}\" is not implemented",
                 format
@@ -98,18 +104,17 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
 impl<T: 'static + Write> RPMFile<T> {
     pub fn write_head(&mut self) -> io::Result<()> {
         self.file.write_lead(&self.lead)?;
-        self.file.write_header(&self.signature_tags)?;
+        let mut signature = Vec::new();
+        signature.write_header(&self.signature_tags)?;
+        self.file.write_all(&signature)?;
+        self.file
+            .write_all(&vec![0; align_n_bytes(signature.len() as u32, 8) as usize])?;
         self.file.write_header(&self.header_tags)?;
         Ok(())
     }
 
     pub fn write_payload(self, path: &Path) -> io::Result<u64> {
-        let mut reader = OpenOptions::new().open(path)?;
-        let mut writer = self.into_compress_writer()?;
-        io::copy(&mut reader, &mut writer)
-    }
-
-    fn into_compress_writer(self) -> io::Result<Box<dyn Write>> {
+        let mut reader = File::open(path)?;
         let compressor: String = self
             .header_tags
             .get_value(Tag::PayloadCompressor)
@@ -117,22 +122,46 @@ impl<T: 'static + Write> RPMFile<T> {
             .as_string()
             .ok_or_else(|| io::Error::other("Compression is not defined"))?;
 
-        match compressor.as_str() {
-            "gzip" => Ok(Box::new(GzEncoder::new(
-                self.file,
-                flate2::Compression::best(),
-            ))),
-            "bzip2" => Ok(Box::new(BzEncoder::new(
-                self.file,
-                bzip2::Compression::best(),
-            ))),
-            "zstd" => Ok(Box::new(Encoder::new(self.file, 3)?)),
-            "xz" | "lzma" => Ok(Box::new(XzEncoder::new(self.file, 3))),
-
-            format => Err(io::Error::other(format!(
-                "Decompressor \"{}\" is not implemented",
-                format
-            ))),
-        }
+        let count = match compressor.as_str() {
+            "gzip" => {
+                let mut writer = GzEncoder::new(self.file, flate2::Compression::best());
+                let count = io::copy(&mut reader, &mut writer)?;
+                writer.finish()?;
+                count
+            }
+            "bzip2" => {
+                let mut writer = BzEncoder::new(self.file, bzip2::Compression::best());
+                let count = io::copy(&mut reader, &mut writer)?;
+                writer.finish()?;
+                count
+            }
+            "zstd" => {
+                let mut writer = Encoder::new(self.file, 3)?;
+                let count = io::copy(&mut reader, &mut writer)?;
+                writer.finish()?;
+                count
+            }
+            "xz" | "lzma" => {
+                let mut writer = if compressor == "lzma" {
+                    XzEncoder::new_stream(
+                        self.file,
+                        Stream::new_lzma_encoder(&LzmaOptions::new_preset(3)?)?,
+                    )
+                } else {
+                    XzEncoder::new(self.file, 3)
+                };
+                let count = io::copy(&mut reader, &mut writer)?;
+                writer.finish()?;
+                count
+            }
+            "none" => io::copy(&mut reader, &mut { self.file })?,
+            format => {
+                return Err(io::Error::other(format!(
+                    "Compressor \"{}\" is not implemented",
+                    format
+                )));
+            }
+        };
+        Ok(count)
     }
 }

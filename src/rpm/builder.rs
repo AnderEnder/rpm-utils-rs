@@ -26,7 +26,7 @@ pub struct RPMBuilder {
     package_name: Option<String>,
     version: Option<String>,
     release: String,
-    epoch: u8,
+    epoch: u32,
     arch: String,
     package_group: Option<String>,
     license: Option<String>,
@@ -66,7 +66,9 @@ impl RPMBuilder {
             epoch: 0,
             release: "1".to_owned(),
             arch: "noarch".to_owned(),
-            build_host: hostname::get().unwrap().into_string().unwrap(),
+            build_host: hostname::get()
+                .map(|host| host.to_string_lossy().into_owned())
+                .unwrap_or_default(),
             build_time,
             default_user: "root".to_owned(),
             default_group: "root".to_owned(),
@@ -95,7 +97,7 @@ impl RPMBuilder {
         self
     }
 
-    pub fn epoch(mut self, epoch: u8) -> Self {
+    pub fn epoch(mut self, epoch: u32) -> Self {
         self.epoch = epoch;
         self
     }
@@ -220,6 +222,12 @@ impl RPMBuilder {
     }
 
     pub fn build(self) -> io::Result<RPMFile<File>> {
+        if self.build_time < 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Build time cannot be negative",
+            ));
+        }
         let filename = self
             .filename
             .ok_or_else(|| io::Error::other("No rpm file is defined"))?;
@@ -246,6 +254,7 @@ impl RPMBuilder {
             .insert_name(package_name.clone())
             .insert_epoch(self.epoch)
             .insert_version(self.version.unwrap_or_default())
+            .insert(Tag::Release, crate::header::RType::String(self.release))
             .insert_arch(self.arch)
             .insert_group(self.package_group.unwrap_or_default())
             .insert_size(0)

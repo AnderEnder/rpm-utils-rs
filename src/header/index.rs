@@ -97,6 +97,7 @@ impl RType {
             RType::Int8(n) => Some(i64::from(*n)),
             RType::Int16(n) => Some(i64::from(*n)),
             RType::Int32(n) => Some(i64::from(*n)),
+            RType::Int64(n) => i64::try_from(*n).ok(),
             _ => None,
         }
     }
@@ -243,20 +244,22 @@ where
     T: FromPrimitive + Default,
 {
     pub fn read<R: Read>(fh: &mut R) -> io::Result<Self> {
-        let tag_id: u32 = fh.read_be()?;
+        let tag_id: u32 = omnom::ReadExt::read_be(fh)?;
         let tag = T::from_u32(tag_id).unwrap_or_else(|| {
             warn!("Unknown tag {}", tag_id);
             T::default()
         });
 
-        let type_id: u32 = fh.read_be()?;
-        let itype = Type::from_u32(type_id).unwrap_or_else(|| {
-            warn!("Unknown type {}", type_id);
-            Type::Null
-        });
+        let type_id: u32 = omnom::ReadExt::read_be(fh)?;
+        let itype = Type::from_u32(type_id).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Unknown RPM type {type_id}"),
+            )
+        })?;
 
-        let offset: u32 = fh.read_be()?;
-        let count: u32 = fh.read_be()?;
+        let offset: u32 = omnom::ReadExt::read_be(fh)?;
+        let count: u32 = omnom::ReadExt::read_be(fh)?;
 
         Ok(Index {
             tag,
@@ -304,7 +307,7 @@ impl<T: Copy> Index<T> {
             RType::Int32(_) | RType::Int32Array(_) => Type::Int32,
             RType::Int64(_) | RType::Int64Array(_) => Type::Int64,
             RType::String(_) => Type::String,
-            RType::Bin(_) => Type::String,
+            RType::Bin(_) => Type::Bin,
             RType::StringArray(_) => Type::StringArray,
             RType::I18nstring(_) => Type::I18nstring,
         };
@@ -325,7 +328,13 @@ impl IndexArray {
         R: Read + Seek,
         T: FromPrimitive + Default,
     {
-        let mut indexes = Vec::with_capacity(nindex);
+        if nindex > super::MAX_HEADER_SIZE / 16 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Too many RPM header indexes",
+            ));
+        }
+        let mut indexes = Vec::new();
         for _ in 0..nindex {
             let index = Index::read(fh)?;
             indexes.push(index);
@@ -449,7 +458,8 @@ mod tests {
         assert_eq!(RType::Int8(8).as_i64(), Some(8));
         assert_eq!(RType::Int16(16).as_i64(), Some(16));
         assert_eq!(RType::Int32(32).as_i64(), Some(32));
-        assert_eq!(RType::Int64(64).as_i64(), None);
+        assert_eq!(RType::Int64(64).as_i64(), Some(64));
+        assert_eq!(RType::Int64(u64::MAX).as_i64(), None);
         assert_eq!(RType::String("not a number".to_string()).as_i64(), None);
     }
 
@@ -604,7 +614,7 @@ mod tests {
         assert_eq!(index.itype, Type::String);
 
         let index = Index::from(&tag, &RType::Bin(vec![1, 2]), 10, 1);
-        assert_eq!(index.itype, Type::String);
+        assert_eq!(index.itype, Type::Bin);
 
         let index = Index::from(&tag, &RType::StringArray(vec!["a".to_string()]), 10, 1);
         assert_eq!(index.itype, Type::StringArray);

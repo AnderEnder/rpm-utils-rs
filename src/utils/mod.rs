@@ -1,5 +1,4 @@
 use hex::FromHex;
-use omnom::prelude::*;
 use std::io;
 use std::io::{Read, Write};
 
@@ -8,17 +7,9 @@ pub fn align_n_bytes(from: u32, n: u32) -> u32 {
 }
 
 pub fn parse_string(bytes: &[u8]) -> String {
-    let position = bytes.iter().position(|&x| x == 0).unwrap_or(0);
+    let position = bytes.iter().position(|&x| x == 0).unwrap_or(bytes.len());
     let bytes2 = &bytes[0..position];
     String::from_utf8_lossy(bytes2).to_string()
-}
-
-pub fn parse_strings(bytes: &[u8], count: usize) -> Vec<String> {
-    bytes
-        .split(|x| *x == 0)
-        .take(count)
-        .map(|b| String::from_utf8_lossy(b).to_string())
-        .collect()
 }
 
 pub trait HexWriter {
@@ -47,10 +38,13 @@ where
         let mut raw_bytes = [0_u8; 8];
         self.read_exact(&mut raw_bytes)?;
 
-        Vec::from_hex(raw_bytes)
-            .map_err(|e| io::Error::other(format!("Error: can not parse hex {}", e)))?
-            .as_slice()
-            .read_be()
+        let bytes = Vec::from_hex(raw_bytes).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Error: can not parse hex {}", e),
+            )
+        })?;
+        omnom::ReadExt::read_be(&mut bytes.as_slice())
     }
 }
 

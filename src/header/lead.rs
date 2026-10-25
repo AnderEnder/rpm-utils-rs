@@ -23,8 +23,8 @@ impl HeaderLead {
         let mut reserved = [0_u8; 4];
         fh.read_exact(&mut reserved)?;
 
-        let nindex: u32 = fh.read_be()?;
-        let hsize: u32 = fh.read_be()?;
+        let nindex: u32 = omnom::ReadExt::read_be(fh)?;
+        let hsize: u32 = omnom::ReadExt::read_be(fh)?;
 
         Ok(HeaderLead {
             magic,

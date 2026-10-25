@@ -1,5 +1,4 @@
 use chrono::{Local, TimeZone};
-use itertools::multizip;
 use std::fmt;
 use std::io::{Read, Write};
 
@@ -11,7 +10,7 @@ use crate::payload::{FileInfo, RPMPayload};
 #[derive(Debug, Default)]
 pub struct RPMInfo {
     pub name: String,
-    pub epoch: u8,
+    pub epoch: u32,
     pub version: String,
     pub release: String,
     pub arch: String,
@@ -30,9 +29,9 @@ impl fmt::Display for RPMInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let build_time = Local
             .timestamp_opt(self.build_time, 0)
-            .unwrap()
-            .format("%c")
-            .to_string();
+            .single()
+            .map(|time| time.format("%c").to_string())
+            .unwrap_or_else(|| self.build_time.to_string());
 
         writeln!(f, "Name        : {}", self.name)?;
         writeln!(f, "Version     : {}", self.version)?;
@@ -59,69 +58,104 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
             ..
         } = rpm;
 
-        let dirs = header_tags.get_as_string_array_or(Tag::DirNames);
-        let dir_indexes = header_tags.get_as_u32_array_or(Tag::DirIndexes);
-        let basenames = header_tags.get_as_string_array_or(Tag::BaseNames);
-        let filesizes = header_tags.get_as_u64_array_or(Tag::FileSizes);
-        let users = header_tags.get_as_string_array_or(Tag::FileUserName);
-        let groups = header_tags.get_as_string_array_or(Tag::FileGroupName);
-        let flags = header_tags.get_as_u32_array_or(Tag::FileFlags);
-        let mtimes = header_tags.get_as_u32_array_or(Tag::FileMTimes);
-        let linknames = header_tags.get_as_string_array_or(Tag::FileGroupName);
-        let modes = header_tags.get_as_u16_array_or(Tag::FileModes);
-        let devices = header_tags.get_as_u32_array_or(Tag::FileDevices);
-        let inodes = header_tags.get_as_u32_array_or(Tag::FileInodes);
-        let digests = header_tags.get_as_string_array_or(Tag::FileMD5s);
+        let string = |tag| {
+            header_tags
+                .get_value(tag)
+                .and_then(|v| v.as_string())
+                .unwrap_or_default()
+        };
+        let number = |tag| {
+            header_tags
+                .get_value(tag)
+                .and_then(|v| v.as_u64())
+                .unwrap_or_default()
+        };
+        let strings = |tag| {
+            header_tags
+                .get_value(tag)
+                .and_then(|v| v.as_string_array())
+                .unwrap_or_default()
+        };
+        let numbers = |tag| {
+            header_tags
+                .get_value(tag)
+                .and_then(|v| v.as_u64_array().or_else(|| v.as_u64().map(|v| vec![v])))
+                .unwrap_or_default()
+        };
+        let dirs = strings(Tag::DirNames);
+        let dir_indexes = numbers(Tag::DirIndexes);
+        let basenames = strings(Tag::BaseNames);
+        let filesizes = if header_tags.get_value(Tag::LongFileSizes).is_some() {
+            numbers(Tag::LongFileSizes)
+        } else {
+            numbers(Tag::FileSizes)
+        };
+        let users = strings(Tag::FileUserName);
+        let groups = strings(Tag::FileGroupName);
+        let flags = numbers(Tag::FileFlags);
+        let mtimes = numbers(Tag::FileMTimes);
+        let linknames = strings(Tag::FileLinktos);
+        let modes = numbers(Tag::FileModes);
+        let devices = numbers(Tag::FileDevices);
+        let inodes = numbers(Tag::FileInodes);
+        let digests = strings(Tag::FileMD5s);
 
-        let files: Vec<FileInfo> = multizip((
-            basenames,
-            dir_indexes,
-            filesizes,
-            users,
-            groups,
-            linknames,
-            digests,
-        ))
-        .enumerate()
-        .map(
-            |(i, (name, index, size, user, group, linkname, digest))| FileInfo {
-                name: dirs[index as usize].clone() + &name,
-                size,
-                user,
-                group,
-                flags: flags[i],
-                mtime: mtimes[i],
-                digest,
-                mode: modes[i],
-                linkname,
-                device: devices[i],
-                inode: inodes[i],
-            },
-        )
-        .collect();
-
+        let files = basenames
+            .into_iter()
+            .enumerate()
+            .map(|(i, name)| {
+                let directory = dir_indexes
+                    .get(i)
+                    .and_then(|index| usize::try_from(*index).ok())
+                    .and_then(|index| dirs.get(index))
+                    .cloned()
+                    .unwrap_or_default();
+                FileInfo {
+                    name: directory + &name,
+                    size: filesizes.get(i).copied().unwrap_or_default(),
+                    user: users.get(i).cloned().unwrap_or_default(),
+                    group: groups.get(i).cloned().unwrap_or_default(),
+                    flags: flags.get(i).copied().unwrap_or_default() as u32,
+                    mtime: mtimes.get(i).copied().unwrap_or_default() as u32,
+                    digest: digests.get(i).cloned().unwrap_or_default(),
+                    mode: modes.get(i).copied().unwrap_or_default() as u16,
+                    linkname: linknames.get(i).cloned().unwrap_or_default(),
+                    device: devices.get(i).copied().unwrap_or_default() as u32,
+                    inode: inodes.get(i).copied().unwrap_or_default() as u32,
+                }
+            })
+            .collect();
         let payload = RPMPayload {
-            size: signature_tags.get_as_u64(SignatureTag::PayloadSize),
-            format: header_tags.get_as_string(Tag::PayloadFormat),
-            compressor: header_tags.get_as_string(Tag::PayloadCompressor),
-            flags: header_tags.get_as_string(Tag::PayloadFlags),
+            size: signature_tags
+                .get_value(SignatureTag::PayloadSize)
+                .and_then(|v| v.as_u64())
+                .unwrap_or_default(),
+            format: string(Tag::PayloadFormat),
+            compressor: string(Tag::PayloadCompressor),
+            flags: string(Tag::PayloadFlags),
             files,
         };
-
         RPMInfo {
-            name: header_tags.get_as_string(Tag::Name),
-            epoch: header_tags.get_as_u8_default(Tag::Epoch),
-            version: header_tags.get_as_string(Tag::Version),
-            release: header_tags.get_as_string(Tag::Release),
-            arch: header_tags.get_as_string(Tag::Arch),
-            group: header_tags.get_as_string(Tag::Group),
-            size: header_tags.get_as_u64(Tag::Size),
-            license: header_tags.get_as_string_or(Tag::License),
-            source_rpm: header_tags.get_as_string_or(Tag::SourceRpm),
-            build_time: header_tags.get_as_i64(Tag::BuildTime),
-            build_host: header_tags.get_as_string(Tag::BuildHost),
-            summary: header_tags.get_as_string(Tag::Summary),
-            description: header_tags.get_as_string(Tag::Description),
+            name: string(Tag::Name),
+            epoch: number(Tag::Epoch) as u32,
+            version: string(Tag::Version),
+            release: string(Tag::Release),
+            arch: string(Tag::Arch),
+            group: string(Tag::Group),
+            size: if header_tags.get_value(Tag::LongSize).is_some() {
+                number(Tag::LongSize)
+            } else {
+                number(Tag::Size)
+            },
+            license: string(Tag::License),
+            source_rpm: string(Tag::SourceRpm),
+            build_time: header_tags
+                .get_value(Tag::BuildTime)
+                .and_then(|v| v.as_i64())
+                .unwrap_or_default(),
+            build_host: string(Tag::BuildHost),
+            summary: string(Tag::Summary),
+            description: string(Tag::Description),
             payload,
         }
     }
@@ -137,6 +171,7 @@ impl RPMInfo {
             .insert_name(self.name)
             .insert_epoch(self.epoch)
             .insert_version(self.version)
+            .insert(Tag::Release, crate::header::RType::String(self.release))
             .insert_arch(self.arch)
             .insert_group(self.group)
             .insert_size(self.size)
