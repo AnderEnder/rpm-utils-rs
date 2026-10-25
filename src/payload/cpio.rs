@@ -1,7 +1,8 @@
 use filetime::{FileTime, set_file_mtime};
+use std::collections::{HashMap, HashSet};
 use std::convert::{TryFrom, TryInto};
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Seek, Write};
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 use crate::utils::{HexReader, HexWriter, align_n_bytes};
@@ -269,16 +270,21 @@ impl TryFrom<&PathBuf> for FileEntry {
 
     fn try_from(f: &PathBuf) -> Result<Self, Self::Error> {
         let meta = f.symlink_metadata()?;
-        if !meta.is_file() && !meta.is_dir() {
+        if !meta.is_file() && !meta.is_dir() && !meta.file_type().is_symlink() {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "Only regular files and directories can be archived",
+                "Only regular files, directories and symbolic links can be archived",
             ));
         }
         let file_size = if meta.is_dir() {
             0
         } else {
-            let size = u32::try_from(meta.len()).map_err(|_| {
+            let length = if meta.file_type().is_symlink() {
+                symlink_bytes(f)?.len() as u64
+            } else {
+                meta.len()
+            };
+            let size = u32::try_from(length).map_err(|_| {
                 io::Error::new(io::ErrorKind::InvalidInput, "CPIO file is too large")
             })?;
             if size > MAX_CPIO_ENTRY_SIZE {
@@ -319,7 +325,13 @@ impl TryFrom<&PathBuf> for FileEntry {
             Ok(FileEntry {
                 name,
                 ino: 1,
-                mode: if meta.is_dir() { 0o040755 } else { 0o100644 },
+                mode: if meta.is_dir() {
+                    0o040755
+                } else if meta.file_type().is_symlink() {
+                    0o120777
+                } else {
+                    0o100644
+                },
                 uid: 0,
                 gid: 0,
                 nlink: 0,
@@ -346,13 +358,13 @@ fn minor(x: u32) -> u32 {
     x & 0xFF
 }
 
-pub fn read_entries<R: Read + Seek>(reader: &mut R) -> io::Result<Vec<FileEntry>> {
+pub fn read_entries<R: Read>(reader: &mut R) -> io::Result<Vec<FileEntry>> {
     let mut entries = Vec::new();
 
     loop {
         let entry = FileEntry::read(reader)?;
         let position = align_n_bytes(entry.file_size, 4) + entry.file_size;
-        reader.seek(io::SeekFrom::Current(position.into()))?;
+        io_copy_exact(reader, &mut io::sink(), position)?;
         if entry.name == TRAILER {
             break;
         }
@@ -361,25 +373,46 @@ pub fn read_entries<R: Read + Seek>(reader: &mut R) -> io::Result<Vec<FileEntry>
     Ok(entries)
 }
 
-pub fn read_entry<R: Read + Seek, W: Write>(
+pub fn read_entry<R: Read, W: Write>(
     reader: &mut R,
     writer: &mut W,
 ) -> io::Result<(FileEntry, u64)> {
     let entry = FileEntry::read(reader)?;
     let number = io_copy_exact(reader, writer, entry.file_size)?;
     let position = align_n_bytes(entry.file_size, 4);
-    reader.seek(io::SeekFrom::Current(position.into()))?;
+    io_copy_exact(reader, &mut io::sink(), position)?;
     Ok((entry, number.into()))
 }
 
-pub fn extract_entry<R: Read + Seek>(
+pub fn extract_entry<R: Read>(
     reader: &mut R,
     dir: &Path,
     creates_dir: bool,
     change_owner: bool,
 ) -> io::Result<(FileEntry, u64)> {
     let entry = FileEntry::read(reader)?;
+    extract_entry_inner(
+        reader,
+        entry,
+        dir,
+        creates_dir,
+        change_owner,
+        false,
+        &mut HashMap::new(),
+    )
+}
 
+type LinkMap = HashMap<(u32, u32, u32), PathBuf>;
+
+fn extract_entry_inner<R: Read>(
+    reader: &mut R,
+    entry: FileEntry,
+    dir: &Path,
+    creates_dir: bool,
+    change_owner: bool,
+    defer_directories: bool,
+    links: &mut LinkMap,
+) -> io::Result<(FileEntry, u64)> {
     // write content to file only if it is not a last pseudo
     if entry.name != TRAILER {
         let path = dir.join(&entry.name);
@@ -422,10 +455,10 @@ pub fn extract_entry<R: Read + Seek>(
         let mut number = 0;
 
         let file_type = entry.mode & 0o170000;
-        if file_type != 0o040000 && file_type != 0o100000 {
+        if !matches!(file_type, 0o040000 | 0o100000 | 0o120000) {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "Only regular files and directories can be extracted",
+                "Only regular files, directories and symbolic links can be extracted",
             ));
         }
         if file_type == 0o040000 {
@@ -451,58 +484,196 @@ pub fn extract_entry<R: Read + Seek>(
                 }
             }
 
-            let mut options = OpenOptions::new();
-            options.create(true).write(true).truncate(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                options.custom_flags(nix::libc::O_NOFOLLOW);
+            if file_type == 0o120000 {
+                if entry.file_size == 0 || entry.file_size > MAX_NAME_SIZE {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Invalid symlink target size",
+                    ));
+                }
+                let mut target = Vec::new();
+                io_copy_exact(reader, &mut target, entry.file_size)?;
+                create_symlink(&target, &canonical_path)?;
+                number = entry.file_size;
+            } else {
+                let key = (entry.dev_major, entry.dev_minor, entry.ino);
+                let previous = if entry.nlink > 1 {
+                    links.get(&key).cloned()
+                } else {
+                    None
+                };
+                if let Some(previous) = previous {
+                    let previous = compute_safe_canonical_path(&previous, &canonical_dir)?;
+                    if entry.file_size > 0 {
+                        let mut options = OpenOptions::new();
+                        options.write(true).truncate(true);
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::OpenOptionsExt;
+                            options.custom_flags(nix::libc::O_NOFOLLOW);
+                        }
+                        let mut writer = options.open(&previous)?;
+                        number = io_copy_exact(reader, &mut writer, entry.file_size)?;
+                    }
+                    // Refuse an existing destination rather than truncate an alias.
+                    std::fs::hard_link(&previous, &canonical_path)?;
+                } else {
+                    let mut writer = open_regular_file(&canonical_path)?;
+                    number = io_copy_exact(reader, &mut writer, entry.file_size)?;
+                    if entry.nlink > 1 {
+                        links.insert(key, canonical_path.clone());
+                    }
+                }
             }
-            let mut writer = options.open(&canonical_path)?;
-            number = io_copy_exact(reader, &mut writer, entry.file_size)?;
-
             let position = align_n_bytes(entry.file_size, 4);
-            reader.seek(io::SeekFrom::Current(position.into()))?;
+            io_copy_exact(reader, &mut io::sink(), position)?;
         }
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if change_owner {
-                use nix::unistd::{Gid, Uid, chown};
-                chown(
-                    &path,
-                    Some(Uid::from_raw(entry.uid)),
-                    Some(Gid::from_raw(entry.gid)),
-                )
-                .map_err(|e| io::Error::other(format!("Error: can not change owner {}", e)))?
-            }
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(entry.mode & 0o7777))?;
+        if !(defer_directories && file_type == 0o040000) {
+            restore_metadata(&canonical_path, &entry, change_owner)?;
         }
-
-        let mtime = FileTime::from_unix_time(entry.mtime.into(), 0);
-        set_file_mtime(&path, mtime)?;
         Ok((entry, number.into()))
     } else {
         Ok((entry, 0))
     }
 }
 
-pub fn extract_entries<R: Read + Seek>(
+pub fn extract_entries<R: Read>(
     reader: &mut R,
     dir: &Path,
     creates_dir: bool,
     change_owner: bool,
 ) -> io::Result<Vec<FileEntry>> {
     let mut entries = Vec::new();
+    let mut links = HashMap::new();
+    let mut names = HashSet::new();
     loop {
-        let (entry, _) = extract_entry(reader, dir, creates_dir, change_owner)?;
+        // Normalize names so aliases such as ./dir/file cannot overwrite a link
+        // group member and silently destroy its data.
+        let next = FileEntry::read(reader)?;
+        let normalized: PathBuf = Path::new(&next.name).components().collect();
+        if next.name != TRAILER && !names.insert(normalized) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Duplicate CPIO extraction path",
+            ));
+        }
+        let (entry, _) = extract_entry_inner(
+            reader,
+            next,
+            dir,
+            creates_dir,
+            change_owner,
+            true,
+            &mut links,
+        )?;
         if entry.name == TRAILER {
             break;
         }
         entries.push(entry);
     }
+    // Children must be created before restoring a read-only directory's mode and
+    // mtime. Restore deeper directories first even for archives in unusual order.
+    let mut directories: Vec<_> = entries
+        .iter()
+        .filter(|entry| entry.mode & 0o170000 == 0o040000)
+        .collect();
+    directories.sort_by_key(|entry| std::cmp::Reverse(Path::new(&entry.name).components().count()));
+    for entry in directories {
+        restore_metadata(&dir.join(&entry.name), entry, change_owner)?;
+    }
     Ok(entries)
+}
+
+fn open_regular_file(path: &Path) -> io::Result<File> {
+    // Do not truncate a pre-existing hard link: it may refer to data outside the
+    // extraction root. Unlinking the directory entry leaves other aliases intact.
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => {
+            std::fs::remove_file(path)?;
+        }
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "Extraction destination is not a regular file",
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    OpenOptions::new().create_new(true).write(true).open(path)
+}
+
+fn restore_metadata(path: &Path, entry: &FileEntry, change_owner: bool) -> io::Result<()> {
+    let symlink = entry.mode & 0o170000 == 0o120000;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if change_owner {
+            use nix::fcntl::AtFlags;
+            use nix::unistd::{Gid, Uid, fchownat};
+            fchownat(
+                nix::fcntl::AT_FDCWD,
+                path,
+                Some(Uid::from_raw(entry.uid)),
+                Some(Gid::from_raw(entry.gid)),
+                AtFlags::AT_SYMLINK_NOFOLLOW,
+            )
+            .map_err(io::Error::from)?;
+        }
+        if !symlink {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(entry.mode & 0o7777))?;
+        }
+    }
+    let mtime = FileTime::from_unix_time(entry.mtime.into(), 0);
+    if symlink {
+        filetime::set_symlink_file_times(path, mtime, mtime)
+    } else {
+        set_file_mtime(path, mtime)
+    }
+}
+
+fn symlink_bytes(path: &Path) -> io::Result<Vec<u8>> {
+    let target = std::fs::read_link(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        Ok(target.as_os_str().as_bytes().to_vec())
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(target.to_string_lossy().as_bytes().to_vec())
+    }
+}
+
+fn create_symlink(target: &[u8], path: &Path) -> io::Result<()> {
+    if target.contains(&0) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "NUL in symlink target",
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        std::os::unix::fs::symlink(std::ffi::OsStr::from_bytes(target), path)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (target, path);
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Symlink extraction is only supported on Unix",
+        ))
+    }
+}
+
+pub(crate) fn entry_reader(path: &Path, entry: &FileEntry) -> io::Result<Box<dyn Read>> {
+    match entry.mode & 0o170000 {
+        0o040000 => Ok(Box::new(io::empty())),
+        0o120000 => Ok(Box::new(io::Cursor::new(symlink_bytes(path)?))),
+        _ => Ok(Box::new(File::open(path)?)),
+    }
 }
 
 const BUFSIZE: usize = 8 * 1024;
@@ -526,62 +697,6 @@ fn io_copy_exact<R: Read, W: Write>(reader: &mut R, writer: &mut W, count: u32) 
     Ok(count)
 }
 
-#[allow(dead_code)]
-struct CpioFiles<T> {
-    reader: T,
-}
-
-#[allow(dead_code)]
-impl<T: Read + Seek> CpioFiles<T> {
-    pub fn new(reader: T) -> Self {
-        CpioFiles { reader }
-    }
-}
-
-impl<T: Read + Seek> Iterator for CpioFiles<T> {
-    type Item = (FileEntry, Vec<u8>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut bytes = Vec::new();
-        let (entry, _) = read_entry(&mut self.reader, &mut bytes).unwrap();
-        if entry.name != TRAILER {
-            Some((entry, bytes))
-        } else {
-            None
-        }
-    }
-}
-
-#[allow(dead_code)]
-struct CpioEntries<T> {
-    reader: T,
-}
-
-#[allow(dead_code)]
-impl<T: Read + Seek> CpioEntries<T> {
-    pub fn new(reader: T) -> Self {
-        CpioEntries { reader }
-    }
-}
-
-impl<T: Read + Seek> Iterator for CpioEntries<T> {
-    type Item = FileEntry;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let entry = FileEntry::read(&mut self.reader).unwrap();
-        let position = align_n_bytes(entry.file_size, 4) + entry.file_size;
-        self.reader
-            .seek(io::SeekFrom::Current(position.into()))
-            .unwrap();
-
-        if entry.name != TRAILER {
-            Some(entry)
-        } else {
-            None
-        }
-    }
-}
-
 pub trait CpioRead {
     fn read_cpio_entry(&mut self) -> io::Result<FileEntry>;
     fn read_cpio_entry_payload<W: Write>(
@@ -593,7 +708,7 @@ pub trait CpioRead {
 
 impl<R> CpioRead for R
 where
-    R: Read + Seek,
+    R: Read,
 {
     fn read_cpio_entry(&mut self) -> io::Result<FileEntry> {
         FileEntry::read(self)
@@ -607,7 +722,7 @@ where
         let file_size = entry.file_size;
         io_copy_exact(self, writer, file_size)?;
         let position = align_n_bytes(entry.file_size, 4);
-        self.seek(io::SeekFrom::Current(position.into()))?;
+        io_copy_exact(self, &mut io::sink(), position)?;
         Ok(())
     }
 }
@@ -619,11 +734,8 @@ pub trait CpioWriter {
 
     fn write_cpio_file(&mut self, path: &PathBuf) -> io::Result<()> {
         let entry: FileEntry = path.try_into()?;
-        if entry.mode & 0o170000 == 0o040000 {
-            self.write_cpio_record(entry, &mut io::empty())
-        } else {
-            self.write_cpio_record(entry, &mut File::open(path)?)
-        }
+        let mut reader = entry_reader(path, &entry)?;
+        self.write_cpio_record(entry, &mut reader)
     }
 
     fn write_cpio_files(&mut self, paths: Vec<PathBuf>) -> io::Result<()> {
@@ -690,11 +802,7 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
 
     pub fn add_raw_file(mut self, path: &PathBuf) -> io::Result<Self> {
         let record: FileEntry = path.try_into()?;
-        let reader: Box<dyn Read> = if record.mode & 0o170000 == 0o040000 {
-            Box::new(io::empty())
-        } else {
-            Box::new(File::open(path)?)
-        };
+        let reader = entry_reader(path, &record)?;
         self.records.push((record, reader));
         Ok(self)
     }
@@ -703,11 +811,7 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
         let file = PathBuf::from(path);
         let mut record: FileEntry = (&file).try_into()?;
         record.name = as_path.to_owned();
-        let reader: Box<dyn Read> = if record.mode & 0o170000 == 0o040000 {
-            Box::new(io::empty())
-        } else {
-            Box::new(File::open(&file)?)
-        };
+        let reader = entry_reader(&file, &record)?;
         self.records.push((record, reader));
         Ok(self)
     }

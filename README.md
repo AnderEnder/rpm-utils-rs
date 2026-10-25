@@ -32,9 +32,11 @@ cargo run --bin rpm-info -- /path/to/package.rpm
 cargo run --bin rpm2cpio -- /path/to/package.rpm > payload.cpio
 ```
 
-CPIO creation and extraction currently support regular files and directory entries.
-Symbolic links and special files return an unsupported-type error. Directory inputs
-are not traversed recursively, and hard-link relationships are not reconstructed.
+CPIO supports regular files and directory entries, plus symbolic links on Unix.
+Extraction reconstructs hard-link groups and restores directory metadata after
+children are extracted. Readers work with streams, including decompressor output.
+Special files return an unsupported-type error; extraction requires a destination
+directory that other processes cannot modify concurrently.
 RPM epochs use `u32` throughout the metadata API.
 
 The current implementation targets legacy v3/v4 packages; RPM v6 is a distinct

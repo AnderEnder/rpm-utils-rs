@@ -117,3 +117,119 @@ fn builder_archives_directories_with_zero_payload_size() -> io::Result<()> {
     assert_eq!(reader.read_cpio_entry()?.name, "TRAILER!!!");
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn symlinks_roundtrip_without_modifying_their_targets() -> io::Result<()> {
+    use std::os::unix::fs::symlink;
+    let source = tempdir()?;
+    let outside = tempdir()?;
+    let target = outside.path().join("target");
+    std::fs::write(&target, b"unchanged")?;
+    let timestamp = filetime::FileTime::from_unix_time(123456, 0);
+    filetime::set_file_mtime(&target, timestamp)?;
+    let link = source.path().join("link");
+    symlink(&target, &link)?;
+    let mut archive = Vec::new();
+    CpioBuilder::new(&mut archive)
+        .add_raw_file(&link)?
+        .build()?;
+    let destination = tempdir()?;
+    // A slice has no Seek implementation: extraction works directly from streams.
+    extract_entries(&mut archive.as_slice(), destination.path(), true, false)?;
+    assert_eq!(std::fs::read_link(destination.path().join("link"))?, target);
+    assert_eq!(
+        filetime::FileTime::from_last_modification_time(&std::fs::metadata(&target)?),
+        timestamp
+    );
+    assert_eq!(std::fs::read(&target)?, b"unchanged");
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn hard_links_share_data_even_when_payload_is_last() -> io::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    let mut archive = Vec::new();
+    for (name, data) in [
+        ("first", &b""[..]),
+        ("second", &b""[..]),
+        ("last", &b"hello"[..]),
+    ] {
+        let mut entry = record(name, 0o100644, 3, data.len() as u32);
+        entry.ino = 42;
+        archive.write_cpio_record(entry, &mut &data[..])?;
+    }
+    archive.cpio_close()?;
+    let destination = tempdir()?;
+    extract_entries(&mut archive.as_slice(), destination.path(), true, false)?;
+    let first = std::fs::metadata(destination.path().join("first"))?;
+    for name in ["first", "second", "last"] {
+        assert_eq!(std::fs::read(destination.path().join(name))?, b"hello");
+        assert_eq!(
+            std::fs::metadata(destination.path().join(name))?.ino(),
+            first.ino()
+        );
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn restores_readonly_directory_metadata_after_children() -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut archive = Vec::new();
+    let mut directory = record("dir", 0o040555, 2, 0);
+    directory.mtime = 123456;
+    archive.write_cpio_record(directory, &mut io::empty())?;
+    archive.write_cpio_record(record("dir/file", 0o100644, 1, 5), &mut &b"hello"[..])?;
+    archive.cpio_close()?;
+    let destination = tempdir()?;
+    extract_entries(&mut archive.as_slice(), destination.path(), true, false)?;
+    let metadata = std::fs::metadata(destination.path().join("dir"))?;
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o555);
+    assert_eq!(
+        filetime::FileTime::from_last_modification_time(&metadata).unix_seconds(),
+        123456
+    );
+    std::fs::set_permissions(
+        destination.path().join("dir"),
+        std::fs::Permissions::from_mode(0o755),
+    )?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn overwriting_existing_hardlink_does_not_modify_external_inode() -> io::Result<()> {
+    let outside = tempdir()?;
+    let destination = tempdir()?;
+    let target = outside.path().join("target");
+    std::fs::write(&target, b"unchanged")?;
+    std::fs::hard_link(&target, destination.path().join("file"))?;
+    let mut archive = Vec::new();
+    archive.write_cpio_record(record("file", 0o100644, 1, 3), &mut &b"new"[..])?;
+    archive.cpio_close()?;
+    extract_entries(&mut archive.as_slice(), destination.path(), true, false)?;
+    assert_eq!(std::fs::read(&target)?, b"unchanged");
+    assert_eq!(std::fs::read(destination.path().join("file"))?, b"new");
+    Ok(())
+}
+
+#[test]
+fn rejects_truncated_payload_and_alignment_on_streams() -> io::Result<()> {
+    let mut archive = Vec::new();
+    archive.write_cpio_record(record("file", 0o100644, 1, 5), &mut &b"hello"[..])?;
+    // Remove one padding byte. Seeking over it used to hide the truncation.
+    archive.pop();
+    let mut stream = archive.as_slice();
+    let entry = stream.read_cpio_entry()?;
+    assert_eq!(
+        stream
+            .read_cpio_entry_payload(&entry, &mut io::sink())
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::UnexpectedEof
+    );
+    Ok(())
+}
