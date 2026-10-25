@@ -23,6 +23,12 @@ pub struct RPMBuilder {
     release: String,
     epoch: u32,
     arch: String,
+    target: Option<super::PackageTarget>,
+    payload_uid: u32,
+    payload_gid: u32,
+    reproducible: Option<u32>,
+    modes: HashMap<String, u32>,
+    requires: Vec<String>,
     package_group: Option<String>,
     license: Option<String>,
     source_rpm: Option<String>,
@@ -75,6 +81,47 @@ impl RPMBuilder {
 
     pub fn arch(mut self, arch: &str) -> Self {
         self.arch = arch.to_owned();
+        self.target = None;
+        self
+    }
+
+    /// Select a validated Linux/noarch target independently of the host.
+    /// Unlike the legacy `arch()` setter, this also checks recognized binaries.
+    pub fn target(mut self, target: &str) -> io::Result<Self> {
+        let target: super::PackageTarget = target.parse()?;
+        self.arch = target.arch().into();
+        self.target = Some(target);
+        Ok(self)
+    }
+
+    /// Numeric installed ownership in CPIO; never inherit packaging-host IDs.
+    pub fn payload_owner(mut self, uid: u32, gid: u32) -> Self {
+        self.payload_uid = uid;
+        self.payload_gid = gid;
+        self
+    }
+
+    /// Normalize package/file timestamps and build host for repeatable output.
+    /// Identical file bytes, modes, paths and link topology are still required.
+    pub fn reproducible(mut self, epoch: u32) -> Self {
+        self.reproducible = Some(epoch);
+        self.build_time = epoch.into();
+        self.build_host = "reproducible".into();
+        self
+    }
+
+    /// Override installed permission bits for one explicitly mapped path.
+    pub fn file_mode(mut self, destination: &str, mode: u32) -> io::Result<Self> {
+        if mode & !0o7777 != 0 {
+            return Err(invalid_input("Mode must contain only permission bits"));
+        }
+        self.modes.insert(package_path(destination)?, mode);
+        Ok(self)
+    }
+
+    /// Add an unversioned runtime package requirement (for example java-headless).
+    pub fn requires(mut self, name: &str) -> Self {
+        self.requires.push(name.into());
         self
     }
 
@@ -348,6 +395,11 @@ impl RPMBuilder {
         let mut payload = tempfile::NamedTempFile::new()?;
         let mut infos = Vec::new();
         let mut identities = HashMap::new();
+        let mut link_counts = HashMap::<_, u32>::new();
+        for (source, _) in &paths {
+            *link_counts.entry(file_identity(source)?).or_default() += 1;
+        }
+        let mut inode_modes = HashMap::new();
         for (source, destination) in paths {
             let destination = package_path(&destination)?;
             if !names.insert(destination.clone()) {
@@ -355,11 +407,41 @@ impl RPMBuilder {
             }
             let mut record = FileEntry::try_from(&source)?;
             record.name = format!("./{destination}");
+            record.uid = self.payload_uid;
+            record.gid = self.payload_gid;
+            if record.mode & 0o170000 == 0o100000
+                && let Some(target) = &self.target
+            {
+                target.validate_file(&source)?;
+            }
             let identity = file_identity(&source)?;
             let next = identities.len() as u32 + 1;
             record.ino = *identities.entry(identity).or_insert(next);
             record.dev_major = 0;
             record.dev_minor = 0;
+            record.nlink = if matches!(record.mode & 0o170000, 0o100000 | 0o120000) {
+                link_counts[&identity]
+            } else {
+                1
+            };
+            if let Some(epoch) = self.reproducible {
+                record.mtime = epoch;
+            }
+            if let Some(mode) = self.modes.get(&destination) {
+                if record.mode & 0o170000 == 0o120000 {
+                    return Err(invalid_input("Cannot override symlink permissions"));
+                }
+                record.mode = (record.mode & 0o170000) | mode;
+            }
+            if record.nlink > 1
+                && inode_modes
+                    .insert(identity, record.mode)
+                    .is_some_and(|mode| mode != record.mode)
+            {
+                return Err(invalid_input(
+                    "Conflicting permissions for hardlinked files",
+                ));
+            }
             let mut reader = HashingReader {
                 inner: entry_reader(&source, &record)?,
                 digest: sha2::Sha256::new(),
@@ -390,6 +472,11 @@ impl RPMBuilder {
             };
             infos.push(FileInfo { digest, ..info });
         }
+        if self.modes.keys().any(|path| !names.contains(path)) {
+            return Err(invalid_input(
+                "Mode override refers to a missing package path",
+            ));
+        }
         payload.cpio_close()?;
         let package_name = self.package_name.unwrap_or_default();
         let mut header_tags = Tags::new();
@@ -413,6 +500,25 @@ impl RPMBuilder {
             .insert_payload_flags("6".into())
             .insert(Tag::FileDigestAlgo, RType::Int32(8))
             .insert(Tag::I18nTable, RType::StringArray(vec!["C".into()]));
+        if !self.requires.is_empty() {
+            if self
+                .requires
+                .iter()
+                .any(|name| name.is_empty() || name.chars().any(char::is_whitespace))
+            {
+                return Err(invalid_input(
+                    "Runtime requirements must be unversioned names without whitespace",
+                ));
+            }
+            let count = self.requires.len();
+            header_tags
+                .insert(Tag::RequireName, RType::StringArray(self.requires))
+                .insert(
+                    Tag::RequireVersion,
+                    RType::StringArray(vec![String::new(); count]),
+                )
+                .insert(Tag::RequireFlags, RType::Int32Array(vec![0; count]));
+        }
         insert_file_tags(&mut header_tags, &infos);
         for (script, tag, program) in [
             (self.pre_install, Tag::PreIn, Tag::PreInProg),
@@ -449,6 +555,12 @@ impl Default for RPMBuilder {
             release: "1".into(),
             epoch: 0,
             arch: "noarch".into(),
+            target: None,
+            payload_uid: 0,
+            payload_gid: 0,
+            reproducible: None,
+            modes: HashMap::new(),
+            requires: Vec::new(),
             package_group: None,
             license: None,
             source_rpm: None,

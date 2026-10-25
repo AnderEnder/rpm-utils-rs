@@ -16,6 +16,8 @@
 
 ## CLI Tools
 
+- `cargo rpm` - Build and package Cargo projects for Linux targets
+- `rpm-build` - Create RPMs from TOML manifests, including JVM/noarch packages
 - `rpm-info` - Display RPM package information
 - `rpm2cpio` - Extract CPIO payload from RPM packages
 - `rpm-edit` - Modify metadata, files, or permissions and publish atomically
@@ -146,3 +148,17 @@ Preview and validate edits without writing a package:
 ```sh
 rpm-edit original.rpm --set summary="Updated summary" --dry-run --json
 ```
+
+Build packages on macOS or Linux for another Linux architecture:
+
+```sh
+cargo install --path . --locked
+# Configure a target linker/sysroot, then:
+cargo rpm --target aarch64-unknown-linux-musl --locked
+# JVM, scripts and data can use target = "noarch" in rpm.toml:
+rpm-build --manifest rpm.toml
+```
+
+Cargo packaging settings live in `[package.metadata.rpm]`. See
+[cross-packaging and Cargo integration](docs/cross-packaging.md) for manifests,
+compiler commands, JVM packaging, target validation and reproducible output.
