@@ -11,7 +11,7 @@ struct Args {
     #[arg(name = "file", long = "file", short = 'f')]
     file: PathBuf,
 
-    /// Target directory to extract
+    /// Files or directories to include
     #[arg(name = "path")]
     files: Vec<PathBuf>,
 }

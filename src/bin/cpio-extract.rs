@@ -29,9 +29,10 @@ fn run(args: Args) -> io::Result<()> {
             println!("{:#?}", entry);
         }
     } else {
+        std::fs::create_dir_all(&args.target_dir)?;
         let entries = payload::extract_entries(&mut file, &args.target_dir, true, false)?;
         for entry in &entries {
-            println!("Extracting {}", &entry.name);
+            println!("Extracting {}", entry.name);
         }
     }
     Ok(())

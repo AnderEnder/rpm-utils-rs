@@ -10,7 +10,7 @@
 - Parse RPM package headers and metadata
 - Create RPM packages programmatically
 - CPIO archive support (RPM payload format)
-- Multiple compression formats: gzip, bzip2, xz, zstd
+- Multiple compression formats: gzip, bzip2, xz, lzma, zstd, uncompressed
 
 ## CLI Tools
 
@@ -31,6 +31,11 @@ cargo run --bin rpm-info -- /path/to/package.rpm
 # Extract CPIO from RPM
 cargo run --bin rpm2cpio -- /path/to/package.rpm > payload.cpio
 ```
+
+CPIO creation and extraction currently support regular files and directory entries.
+Symbolic links and special files return an unsupported-type error. Directory inputs
+are not traversed recursively, and hard-link relationships are not reconstructed.
+RPM epochs use `u32` throughout the metadata API.
 
 ## Requirements
 

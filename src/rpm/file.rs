@@ -69,8 +69,13 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
             .write(true)
             .truncate(true)
             .open(path)?;
+        self.copy_payload_to(&mut writer)
+    }
+
+    /// Decompress the payload into an arbitrary destination, such as stdout.
+    pub fn copy_payload_to<W: Write>(self, writer: &mut W) -> io::Result<u64> {
         let mut reader = self.into_uncompress_reader()?;
-        io::copy(&mut reader, &mut writer)
+        io::copy(&mut reader, writer)
     }
 
     fn into_uncompress_reader(mut self) -> io::Result<Box<dyn Read>> {

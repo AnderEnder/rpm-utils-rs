@@ -11,14 +11,18 @@ struct Args {
     #[arg(name = "rpm")]
     path: PathBuf,
 
-    /// Path to save file
+    /// Destination file (defaults to stdout)
     #[arg(long = "output")]
-    output: PathBuf,
+    output: Option<PathBuf>,
 }
 
 fn run(args: Args) -> io::Result<()> {
     let rpm = RPMFile::open(args.path)?;
-    rpm.copy_payload(&args.output)?;
+    if let Some(output) = args.output {
+        rpm.copy_payload(&output)?;
+    } else {
+        rpm.copy_payload_to(&mut io::stdout().lock())?;
+    }
     Ok(())
 }
 
