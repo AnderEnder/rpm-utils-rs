@@ -1,0 +1,9 @@
+[package]
+name = "rpm-cross-smoke"
+version = "1.0.0"
+edition = "2024"
+[workspace]
+[profile.release]
+panic = "abort"
+[package.metadata.rpm]
+source-date-epoch = 1700000000

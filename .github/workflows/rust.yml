@@ -68,3 +68,59 @@ jobs:
           name: coverage-report
           path: coverage/
           if-no-files-found: error
+
+  cross-packages:
+    name: Cross-package on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl
+      - name: Build our Cargo integration
+        run: cargo build --locked --bins
+      - name: Cross-compile and package Linux binaries
+        shell: bash
+        run: |
+          mkdir -p cross-packages
+          for arch in aarch64 x86_64; do
+            RUSTFLAGS='-C linker=rust-lld -C linker-flavor=ld.lld -C link-self-contained=no -C link-arg=--entry=_start' \
+              target/debug/cargo-rpm rpm --locked --offline \
+                --manifest-path examples/cross-smoke/Cargo.toml \
+                --target "${arch}-unknown-linux-musl" \
+                --output "cross-packages/smoke.${arch}.rpm"
+            target/debug/rpm-info --verify "cross-packages/smoke.${arch}.rpm"
+            target/debug/rpm-lint "cross-packages/smoke.${arch}.rpm"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cross-packages-${{ matrix.os }}
+          path: cross-packages/*.rpm
+          if-no-files-found: error
+
+  native-rpm-validation:
+    name: Validate Mac and Linux output with native RPM
+    needs: cross-packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: cross-packages-*
+          path: packages
+      - name: Install native RPM tools
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: Verify package digests and target architecture
+        shell: bash
+        run: |
+          for host in ubuntu-latest macos-latest; do
+            for arch in aarch64 x86_64; do
+              package="packages/cross-packages-${host}/smoke.${arch}.rpm"
+              rpm --checksig --nosignature "$package"
+              test "$(rpm -qp --queryformat '%{ARCH}' "$package")" = "$arch"
+              rpm -qpl "$package" | grep -Fx /usr/bin/rpm-cross-smoke
+            done
+          done
