@@ -47,7 +47,7 @@ impl Lead {
             (3, 0) | (3, 1) | (4, 0) => {}
             _ => {
                 return Err(io::Error::other(format!(
-                    "Error: rpm format version is not supported {}.{}",
+                    "Error: RPM lead version is not supported {}.{}",
                     major, minor
                 )));
             }

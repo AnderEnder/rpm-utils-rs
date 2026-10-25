@@ -52,6 +52,7 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
         let header_indexes = IndexArray::read(&mut reader, header.nindex)?;
         let header_tags = Tags::read(&mut reader, &header_indexes, header.hsize as usize)?;
 
+        check_package_format(&header_tags)?;
         let payload_offset = reader.stream_position()?;
 
         Ok(RPMFile {
@@ -108,6 +109,7 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
 
 impl<T: 'static + Write> RPMFile<T> {
     pub fn write_head(&mut self) -> io::Result<()> {
+        check_package_format(&self.header_tags)?;
         self.file.write_lead(&self.lead)?;
         let mut signature = Vec::new();
         signature.write_header(&self.signature_tags)?;
@@ -169,4 +171,21 @@ impl<T: 'static + Write> RPMFile<T> {
         };
         Ok(count)
     }
+}
+
+// The historical lead version is not the package format version. In particular,
+// v6 packages can use a v4 lead. Do not silently treat an explicit v6 header as v4.
+fn check_package_format(tags: &Tags<Tag>) -> io::Result<()> {
+    if let Some(value) = tags.get_value(Tag::RpmFormat) {
+        let format = value.as_u32().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "Invalid RPM package format tag")
+        })?;
+        if format != 3 && format != 4 {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                format!("RPM package format v{format} is not supported (supported: v3/v4)"),
+            ));
+        }
+    }
+    Ok(())
 }

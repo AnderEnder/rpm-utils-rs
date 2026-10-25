@@ -37,6 +37,12 @@ Symbolic links and special files return an unsupported-type error. Directory inp
 are not traversed recursively, and hard-link relationships are not reconstructed.
 RPM epochs use `u32` throughout the metadata API.
 
+The current implementation targets legacy v3/v4 packages; RPM v6 is a distinct
+package format and is not supported. An explicit `RPMTAG_RPMFORMAT` value other
+than 3 or 4 is rejected. The historical lead version is not sufficient to identify
+the package format. See the upstream [v4](https://rpm.org/docs/6.0.x/manual/format_v4.html)
+and [v6](https://rpm.org/docs/6.0.x/manual/format_v6.html) format descriptions.
+
 ## Requirements
 
 - Rust 2024 edition (1.88.0+)

@@ -270,6 +270,7 @@ pub enum Tag {
     AutoInstalled = 5094,
     Identity = 5095,
     ModularityLabel = 5096,
+    RpmFormat = 5114,
     #[default]
     Other = 8888,
 }
