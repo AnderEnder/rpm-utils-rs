@@ -27,10 +27,19 @@ Reviewed and tested on 2026-10-25.
   Name allocation remains bounded; source timestamps and oversized files are
   rejected rather than truncated. Device fields use native platform decoding.
 
+- **Editing:** `RPMEditor` and `rpm-edit` modify textual/typed metadata, replace,
+  add or remove regular files, and change installed permissions. Unknown metadata
+  and other translations are preserved. Metadata-only edits preserve compressed
+  payload bytes; changed packages get fresh digests and are unsigned.
+- **Lint and repair:** `lint_rpm`, `repair_rpm` and `rpm-lint` expose structured
+  diagnostics, JSON output and atomic repair of reconstructable values. Ambiguous
+  content, ownership and mode errors are refused; clean signed inputs are copied
+  byte-for-byte. See [editing and linting](editing-and-linting.md).
+
 ## Validation
 
 `cargo test --locked --all-targets`, `cargo fmt --check`, strict Clippy, and
-`git diff --check` pass on macOS (81 tests). Regression tests independently inspect region
+`git diff --check` pass on macOS (101 tests). Regression tests independently inspect region
 trailers and digest values, exercise all six compressor choices, cover damaged
 packages and failure preservation, and check extraction contents and inode/link
 behavior. The system libarchive reader can read generated RPM packages. An
@@ -49,8 +58,10 @@ not by a local cross-platform run in this review.
   installation are not provided. Integrity verification detects corruption only.
 - Device nodes, FIFOs and sockets are rejected. Windows symbolic-link extraction
   is not implemented.
-- The metadata model is not a lossless RPM editor: unknown tag IDs are coalesced
-  into the enum's `Other` value, and only the first I18N translation is exposed.
-  Supported `RPMInfo` fields do not include every RPM tag or scriptlet.
+- Legacy enum-based `Tags` and `RPMInfo` expose a subset of metadata: unknown IDs
+  are coalesced and only the first I18N translation is exposed. Use `RawHeader`
+  and `RPMEditor` for lossless opaque values and translations. Unknown arrays that
+  could follow changed file entries require an explicit application decision;
+  editing does not infer binary dependencies or authenticate signatures.
 - Extraction requires an exclusive destination directory. Path checks do not
   defend against another process concurrently replacing its ancestors.

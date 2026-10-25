@@ -9,6 +9,8 @@
 
 - Parse RPM package headers and metadata
 - Create RPM packages programmatically
+- Edit metadata and files while preserving opaque header values
+- Lint packages and repair reconstructable metadata and integrity values
 - CPIO archive support (RPM payload format)
 - Multiple compression formats: gzip, bzip2, xz, lzma, zstd, uncompressed
 
@@ -16,6 +18,8 @@
 
 - `rpm-info` - Display RPM package information
 - `rpm2cpio` - Extract CPIO payload from RPM packages
+- `rpm-edit` - Modify metadata, files, or permissions and publish atomically
+- `rpm-lint` - Inspect metadata, payload and integrity; optionally repair
 - `cpio-create` - Create CPIO archives
 - `cpio-extract` - Extract CPIO archives
 
@@ -34,6 +38,34 @@ cargo run --bin rpm-info -- --verify /path/to/package.rpm
 # Extract CPIO from RPM
 cargo run --bin rpm2cpio -- /path/to/package.rpm > payload.cpio
 ```
+
+Edit or inspect an existing RPM:
+
+```bash
+cargo run --bin rpm-edit -- package.rpm --output edited.rpm \
+  --set 'summary=Updated summary' --epoch 2
+
+cargo run --bin rpm-edit -- package.rpm --output edited.rpm \
+  --replace-file /usr/bin/tool=target/release/tool \
+  --add-file /etc/tool.conf=tool.conf --chmod /usr/bin/tool=0755
+
+cargo run --bin rpm-lint -- package.rpm --json
+cargo run --bin rpm-lint -- package.rpm --fix --output repaired.rpm
+# Explicitly replace the input after successful repair:
+cargo run --bin rpm-lint -- package.rpm --fix --in-place
+```
+
+Metadata-only edits preserve the compressed payload bytes. Edited packages have
+fresh integrity digests and are **unsigned**: invalidated OpenPGP signatures are
+removed and reported. Clean packages copied with `rpm-lint --fix` remain byte-for-byte
+identical, including existing signatures. Lint checks integrity, not signer trust.
+
+Repair reconstructs sizes, digests, alignment and immutable regions. It refuses
+missing content, ambiguous file identity/ownership, conflicting modes, and other
+problems it cannot repair reliably. Unknown metadata IDs and all translations are
+preserved through the editor's raw header API. Opaque arrays that may follow file
+entries must be explicitly updated or removed before changing the file list.
+See [editing and linting](docs/editing-and-linting.md) for the API and boundaries.
 
 Create a complete unsigned RPM v4 package:
 

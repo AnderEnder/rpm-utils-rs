@@ -89,7 +89,7 @@ fn compute_safe_canonical_path(path: &Path, canonical_base: &Path) -> io::Result
     Ok(result)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct FileEntry {
     pub name: String,
     pub ino: u32,
