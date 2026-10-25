@@ -8,6 +8,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::utils::{HexReader, HexWriter, align_n_bytes};
 
 const MAGIC: &[u8] = b"070701";
+const CRC_MAGIC: &[u8] = b"070702";
 const TRAILER: &str = "TRAILER!!!";
 
 /// Maximum allowed CPIO entry name size (4 KB) - prevents OOM attacks
@@ -104,6 +105,8 @@ pub struct FileEntry {
     pub dev_minor: u32,
     pub rdev_major: u32,
     pub rdev_minor: u32,
+    /// Sum of payload bytes for the SVR4 crc format; None for newc.
+    pub checksum: Option<u32>,
 }
 
 impl FileEntry {
@@ -111,7 +114,7 @@ impl FileEntry {
         let mut magic = [0_u8; 6];
         reader.read_exact(&mut magic)?;
 
-        if magic != MAGIC {
+        if magic != MAGIC && magic != CRC_MAGIC {
             return Err(io::Error::other(format!(
                 "Error: incorrect magic of cpio entry {:x?}",
                 magic
@@ -154,11 +157,22 @@ impl FileEntry {
             ));
         }
 
-        let checksum = reader.read_hex_as_u32()?;
-        if checksum != 0 {
+        let checksum_value = reader.read_hex_as_u32()?;
+        let checksum = if magic == CRC_MAGIC {
+            Some(checksum_value)
+        } else {
+            if checksum_value != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Nonzero newc checksum",
+                ));
+            }
+            None
+        };
+        if file_size == 0 && checksum.is_some_and(|value| value != 0) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "Nonzero newc checksum",
+                "Invalid checksum for empty CPIO entry",
             ));
         }
 
@@ -204,6 +218,7 @@ impl FileEntry {
             dev_minor,
             rdev_major,
             rdev_minor,
+            checksum,
         })
     }
 
@@ -219,7 +234,11 @@ impl FileEntry {
                 "Invalid CPIO entry",
             ));
         }
-        writer.write_all(MAGIC)?;
+        writer.write_all(if self.checksum.is_some() {
+            CRC_MAGIC
+        } else {
+            MAGIC
+        })?;
         writer.write_u32_as_hex(self.ino)?;
         writer.write_u32_as_hex(self.mode)?;
         writer.write_u32_as_hex(self.uid)?;
@@ -233,7 +252,7 @@ impl FileEntry {
         writer.write_u32_as_hex(self.rdev_minor)?;
         let name_size = (self.name.len() + 1) as u32;
         writer.write_u32_as_hex(name_size)?;
-        writer.write_u32_as_hex(0)?;
+        writer.write_u32_as_hex(self.checksum.unwrap_or(0))?;
 
         let mut name = self.name.as_bytes().to_vec();
         name.push(0_u8);
@@ -261,6 +280,7 @@ impl Default for FileEntry {
             dev_minor: 0,
             rdev_major: 0,
             rdev_minor: 0,
+            checksum: None,
         }
     }
 }
@@ -318,6 +338,7 @@ impl TryFrom<&PathBuf> for FileEntry {
                 dev_minor: minor(meta.dev() as u32),
                 rdev_major: major(meta.rdev() as u32),
                 rdev_minor: minor(meta.rdev() as u32),
+                checksum: None,
             })
         }
         #[cfg(windows)]
@@ -345,6 +366,7 @@ impl TryFrom<&PathBuf> for FileEntry {
                 dev_minor: 0,
                 rdev_major: 0,
                 rdev_minor: 0,
+                checksum: None,
             })
         }
     }
@@ -363,8 +385,8 @@ pub fn read_entries<R: Read>(reader: &mut R) -> io::Result<Vec<FileEntry>> {
 
     loop {
         let entry = FileEntry::read(reader)?;
-        let position = align_n_bytes(entry.file_size, 4) + entry.file_size;
-        io_copy_exact(reader, &mut io::sink(), position)?;
+        copy_entry_payload(reader, &mut io::sink(), &entry)?;
+        io_copy_exact(reader, &mut io::sink(), align_n_bytes(entry.file_size, 4))?;
         if entry.name == TRAILER {
             break;
         }
@@ -378,7 +400,7 @@ pub fn read_entry<R: Read, W: Write>(
     writer: &mut W,
 ) -> io::Result<(FileEntry, u64)> {
     let entry = FileEntry::read(reader)?;
-    let number = io_copy_exact(reader, writer, entry.file_size)?;
+    let number = copy_entry_payload(reader, writer, &entry)?;
     let position = align_n_bytes(entry.file_size, 4);
     io_copy_exact(reader, &mut io::sink(), position)?;
     Ok((entry, number.into()))
@@ -492,7 +514,7 @@ fn extract_entry_inner<R: Read>(
                     ));
                 }
                 let mut target = Vec::new();
-                io_copy_exact(reader, &mut target, entry.file_size)?;
+                copy_entry_payload(reader, &mut target, &entry)?;
                 create_symlink(&target, &canonical_path)?;
                 number = entry.file_size;
             } else {
@@ -513,13 +535,13 @@ fn extract_entry_inner<R: Read>(
                             options.custom_flags(nix::libc::O_NOFOLLOW);
                         }
                         let mut writer = options.open(&previous)?;
-                        number = io_copy_exact(reader, &mut writer, entry.file_size)?;
+                        number = copy_entry_payload(reader, &mut writer, &entry)?;
                     }
                     // Refuse an existing destination rather than truncate an alias.
                     std::fs::hard_link(&previous, &canonical_path)?;
                 } else {
                     let mut writer = open_regular_file(&canonical_path)?;
-                    number = io_copy_exact(reader, &mut writer, entry.file_size)?;
+                    number = copy_entry_payload(reader, &mut writer, &entry)?;
                     if entry.nlink > 1 {
                         links.insert(key, canonical_path.clone());
                     }
@@ -529,7 +551,9 @@ fn extract_entry_inner<R: Read>(
             io_copy_exact(reader, &mut io::sink(), position)?;
         }
 
-        if !(defer_directories && file_type == 0o040000) {
+        if !(defer_directories
+            && (file_type == 0o040000 || (file_type == 0o100000 && entry.nlink > 1)))
+        {
             restore_metadata(&canonical_path, &entry, change_owner)?;
         }
         Ok((entry, number.into()))
@@ -551,7 +575,10 @@ pub fn extract_entries<R: Read>(
         // Normalize names so aliases such as ./dir/file cannot overwrite a link
         // group member and silently destroy its data.
         let next = FileEntry::read(reader)?;
-        let normalized: PathBuf = Path::new(&next.name).components().collect();
+        let normalized: PathBuf = Path::new(&next.name)
+            .components()
+            .filter(|component| *component != Component::CurDir)
+            .collect();
         if next.name != TRAILER && !names.insert(normalized) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -571,6 +598,14 @@ pub fn extract_entries<R: Read>(
             break;
         }
         entries.push(entry);
+    }
+    // A hard-link group's data can occur last. Keep the shared inode writable
+    // until all of its members have been processed.
+    for entry in entries
+        .iter()
+        .filter(|entry| entry.mode & 0o170000 == 0o100000 && entry.nlink > 1)
+    {
+        restore_metadata(&dir.join(&entry.name), entry, change_owner)?;
     }
     // Children must be created before restoring a read-only directory's mode and
     // mtime. Restore deeper directories first even for archives in unusual order.
@@ -676,6 +711,45 @@ pub(crate) fn entry_reader(path: &Path, entry: &FileEntry) -> io::Result<Box<dyn
     }
 }
 
+struct ChecksumReader<R> {
+    inner: R,
+    checksum: u32,
+    enabled: bool,
+}
+impl<R: Read> Read for ChecksumReader<R> {
+    fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+        let count = self.inner.read(bytes)?;
+        if self.enabled {
+            self.checksum = bytes[..count].iter().fold(self.checksum, |sum, value| {
+                sum.wrapping_add(u32::from(*value))
+            });
+        }
+        Ok(count)
+    }
+}
+fn copy_entry_payload<R: Read, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    entry: &FileEntry,
+) -> io::Result<u32> {
+    let mut checked = ChecksumReader {
+        inner: reader,
+        checksum: 0,
+        enabled: entry.checksum.is_some(),
+    };
+    let count = io_copy_exact(&mut checked, writer, entry.file_size)?;
+    if entry
+        .checksum
+        .is_some_and(|expected| expected != checked.checksum)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "CPIO checksum mismatch",
+        ));
+    }
+    Ok(count)
+}
+
 const BUFSIZE: usize = 8 * 1024;
 
 fn io_copy_exact<R: Read, W: Write>(reader: &mut R, writer: &mut W, count: u32) -> io::Result<u32> {
@@ -719,8 +793,7 @@ where
         entry: &FileEntry,
         writer: &mut W,
     ) -> io::Result<()> {
-        let file_size = entry.file_size;
-        io_copy_exact(self, writer, file_size)?;
+        copy_entry_payload(self, writer, entry)?;
         let position = align_n_bytes(entry.file_size, 4);
         io_copy_exact(self, &mut io::sink(), position)?;
         Ok(())
@@ -747,13 +820,26 @@ pub trait CpioWriter {
 
     fn write_cpio_record<R: Read>(&mut self, record: FileEntry, data: &mut R) -> io::Result<()> {
         let size = record.file_size;
+        let checksum = record.checksum;
         self.write_cpio_entry(record)?;
         let mut limited = data.take(u64::from(size));
-        self.write_cpio_entry_payload(&mut limited)?;
+        let mut checked = ChecksumReader {
+            inner: &mut limited,
+            checksum: 0,
+            enabled: checksum.is_some(),
+        };
+        self.write_cpio_entry_payload(&mut checked)?;
+        let actual = checked.checksum;
         if limited.limit() != 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "Truncated CPIO payload",
+            ));
+        }
+        if checksum.is_some_and(|expected| expected != actual) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "CPIO checksum mismatch",
             ));
         }
         Ok(())
@@ -1116,6 +1202,7 @@ mod tests {
             dev_minor: 0,
             rdev_major: 0,
             rdev_minor: 0,
+            checksum: None,
         };
         archive.write_cpio_entry(entry).unwrap();
         archive.write_all(content).unwrap();

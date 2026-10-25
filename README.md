@@ -67,6 +67,11 @@ it does not establish the identity of a package signer.
 `add_link` and `add_directory` preserve relative source paths; absolute sources
 use their final filename as the package path. Directory inputs are recursive.
 
+CPIO reads and writes `newc` (`070701`) and SVR4 `crc` (`070702`) records,
+validating the crc byte-sum on read, write, listing and extraction.
+`FileEntry::checksum` selects crc when set; use `..Default::default()` when
+constructing entries that do not require a checksum.
+
 CPIO supports regular files and directory entries, plus symbolic links on Unix.
 Extraction reconstructs hard-link groups and restores directory metadata after
 children are extracted. Readers work with streams, including decompressor output.

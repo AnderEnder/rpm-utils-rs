@@ -156,7 +156,7 @@ fn hard_links_share_data_even_when_payload_is_last() -> io::Result<()> {
         ("second", &b""[..]),
         ("last", &b"hello"[..]),
     ] {
-        let mut entry = record(name, 0o100644, 3, data.len() as u32);
+        let mut entry = record(name, 0o100444, 3, data.len() as u32);
         entry.ino = 42;
         archive.write_cpio_record(entry, &mut &data[..])?;
     }
@@ -230,6 +230,43 @@ fn rejects_truncated_payload_and_alignment_on_streams() -> io::Result<()> {
             .unwrap_err()
             .kind(),
         io::ErrorKind::UnexpectedEof
+    );
+    Ok(())
+}
+
+#[test]
+fn crc_archives_validate_checksums_on_read_write_and_extraction() -> io::Result<()> {
+    let mut entry = record("crc", 0o100644, 1, 5);
+    entry.checksum = Some(532); // ASCII sum of hello.
+    let mut archive = Vec::new();
+    archive.write_cpio_record(entry, &mut &b"hello"[..])?;
+    archive.cpio_close()?;
+    assert_eq!(&archive[..6], b"070702");
+    let mut reader = archive.as_slice();
+    let entry = reader.read_cpio_entry()?;
+    assert_eq!(entry.checksum, Some(532));
+    let mut data = Vec::new();
+    reader.read_cpio_entry_payload(&entry, &mut data)?;
+    assert_eq!(data, b"hello");
+    let destination = tempdir()?;
+    extract_entries(&mut archive.as_slice(), destination.path(), true, false)?;
+    assert_eq!(std::fs::read(destination.path().join("crc"))?, b"hello");
+    // newc header + 4-byte name padded to 116 bytes.
+    archive[116] ^= 1;
+    assert_eq!(
+        rpm_utils::payload::read_entries(&mut archive.as_slice())
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidData
+    );
+    let destination = tempdir()?;
+    assert!(extract_entries(&mut archive.as_slice(), destination.path(), true, false).is_err());
+    let mut bad = record("bad", 0o100644, 1, 5);
+    bad.checksum = Some(0);
+    assert!(
+        Vec::new()
+            .write_cpio_record(bad, &mut &b"hello"[..])
+            .is_err()
     );
     Ok(())
 }
