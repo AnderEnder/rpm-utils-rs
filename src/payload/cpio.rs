@@ -21,7 +21,9 @@ const MAX_CPIO_ENTRY_SIZE: u32 = 1024 * 1024 * 1024;
 /// - Is an absolute path (including Unix-style paths like "/etc" on Windows)
 /// - Starts with a root directory component (cross-platform absolute path detection)
 fn is_safe_path(path: &Path) -> bool {
-    let has_traversal = path.components().any(|c| matches!(c, Component::ParentDir));
+    let has_traversal = path
+        .components()
+        .any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)));
     let is_absolute = path.is_absolute();
 
     // On Windows, is_absolute() returns false for Unix-style paths like "/etc/passwd"
@@ -42,7 +44,11 @@ fn compute_safe_canonical_path(path: &Path, canonical_base: &Path) -> io::Result
     let mut existing_ancestor = path.to_path_buf();
     let mut components_to_add: Vec<std::ffi::OsString> = Vec::new();
 
-    while !existing_ancestor.exists() {
+    while match std::fs::symlink_metadata(&existing_ancestor) {
+        Ok(_) => false,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => true,
+        Err(error) => return Err(error),
+    } {
         if let Some(file_name) = existing_ancestor.file_name() {
             components_to_add.push(file_name.to_os_string());
         }
@@ -147,19 +153,37 @@ impl FileEntry {
             ));
         }
 
-        let mut checksum = [0_u8; 8];
-        reader.read_exact(&mut checksum)?;
+        let checksum = reader.read_hex_as_u32()?;
+        if checksum != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Nonzero newc checksum",
+            ));
+        }
 
         // optimise later
         let mut name_bytes = vec![0_u8; name_size as usize];
         reader.read_exact(&mut name_bytes)?;
-        let name = if name_size > 0 {
-            let size = (name_size - 1) as usize;
-            String::from_utf8(name_bytes[0..size].to_vec())
-                .map_err(|e| io::Error::other(format!("Error: incorrect utf8 symbol: {}", e)))?
-        } else {
-            return Err(io::Error::other("incorrect cpio name"));
-        };
+        let end = name_bytes.iter().position(|b| *b == 0).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "CPIO name is not NUL terminated",
+            )
+        })?;
+        if end == 0 || name_bytes[end..].iter().any(|b| *b != 0) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid CPIO name",
+            ));
+        }
+        let name = String::from_utf8(name_bytes[..end].to_vec())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        if name == TRAILER && file_size != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "CPIO trailer has data",
+            ));
+        }
 
         // aligning to 4 bytes: name +
         let position = align_n_bytes(name_size + 6, 4);
@@ -183,6 +207,17 @@ impl FileEntry {
     }
 
     fn write<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        if self.name.is_empty()
+            || self.name.contains('\0')
+            || self.name.len() >= MAX_NAME_SIZE as usize
+            || self.file_size > MAX_CPIO_ENTRY_SIZE
+            || (self.name == TRAILER && self.file_size != 0)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid CPIO entry",
+            ));
+        }
         writer.write_all(MAGIC)?;
         writer.write_u32_as_hex(self.ino)?;
         writer.write_u32_as_hex(self.mode)?;
@@ -197,8 +232,7 @@ impl FileEntry {
         writer.write_u32_as_hex(self.rdev_minor)?;
         let name_size = (self.name.len() + 1) as u32;
         writer.write_u32_as_hex(name_size)?;
-        let checksum = [0_u8; 8];
-        writer.write_all(&checksum)?;
+        writer.write_u32_as_hex(0)?;
 
         let mut name = self.name.as_bytes().to_vec();
         name.push(0_u8);
@@ -234,7 +268,27 @@ impl TryFrom<&PathBuf> for FileEntry {
     type Error = io::Error;
 
     fn try_from(f: &PathBuf) -> Result<Self, Self::Error> {
-        let meta = f.metadata()?;
+        let meta = f.symlink_metadata()?;
+        if !meta.is_file() && !meta.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Only regular files and directories can be archived",
+            ));
+        }
+        let file_size = if meta.is_dir() {
+            0
+        } else {
+            let size = u32::try_from(meta.len()).map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidInput, "CPIO file is too large")
+            })?;
+            if size > MAX_CPIO_ENTRY_SIZE {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "CPIO file is too large",
+                ));
+            }
+            size
+        };
         let name = f
             .file_name()
             .ok_or_else(|| io::Error::other(format!("cannot find filename from path {:?}", f)))?
@@ -253,7 +307,7 @@ impl TryFrom<&PathBuf> for FileEntry {
                 gid: meta.gid(),
                 nlink: meta.nlink() as u32,
                 mtime: meta.mtime() as u32,
-                file_size: meta.size() as u32,
+                file_size,
                 dev_major: major(meta.dev() as u32),
                 dev_minor: minor(meta.dev() as u32),
                 rdev_major: major(meta.rdev() as u32),
@@ -262,17 +316,19 @@ impl TryFrom<&PathBuf> for FileEntry {
         }
         #[cfg(windows)]
         {
-            // TODO: reimplement properly for Windows
-            use std::os::windows::fs::MetadataExt;
             Ok(FileEntry {
                 name,
                 ino: 1,
-                mode: meta.file_attributes() as u32,
+                mode: if meta.is_dir() { 0o040755 } else { 0o100644 },
                 uid: 0,
                 gid: 0,
                 nlink: 0,
-                mtime: meta.last_write_time() as u32,
-                file_size: meta.file_size() as u32,
+                mtime: meta
+                    .modified()?
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as u32,
+                file_size,
                 dev_major: 0,
                 dev_minor: 0,
                 rdev_major: 0,
@@ -365,7 +421,20 @@ pub fn extract_entry<R: Read + Seek>(
 
         let mut number = 0;
 
-        if entry.nlink == 2 {
+        let file_type = entry.mode & 0o170000;
+        if file_type != 0o040000 && file_type != 0o100000 {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Only regular files and directories can be extracted",
+            ));
+        }
+        if file_type == 0o040000 {
+            if entry.file_size != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "CPIO directory has data",
+                ));
+            }
             // Entry is a directory - create_dir_all is idempotent
             std::fs::create_dir_all(&path)?;
         } else {
@@ -382,11 +451,14 @@ pub fn extract_entry<R: Read + Seek>(
                 }
             }
 
-            let mut writer = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&path)?;
+            let mut options = OpenOptions::new();
+            options.create(true).write(true).truncate(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.custom_flags(nix::libc::O_NOFOLLOW);
+            }
+            let mut writer = options.open(&canonical_path)?;
             number = io_copy_exact(reader, &mut writer, entry.file_size)?;
 
             let position = align_n_bytes(entry.file_size, 4);
@@ -395,14 +467,9 @@ pub fn extract_entry<R: Read + Seek>(
 
         #[cfg(unix)]
         {
+            use std::os::unix::fs::PermissionsExt;
             if change_owner {
                 use nix::unistd::{Gid, Uid, chown};
-                use std::os::unix::fs::PermissionsExt;
-
-                let metadata = path.metadata()?;
-                let mut permissions = metadata.permissions();
-                permissions.set_mode(entry.mode);
-                std::fs::set_permissions(&path, permissions)?;
                 chown(
                     &path,
                     Some(Uid::from_raw(entry.uid)),
@@ -410,6 +477,7 @@ pub fn extract_entry<R: Read + Seek>(
                 )
                 .map_err(|e| io::Error::other(format!("Error: can not change owner {}", e)))?
             }
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(entry.mode & 0o7777))?;
         }
 
         let mtime = FileTime::from_unix_time(entry.mtime.into(), 0);
@@ -538,7 +606,7 @@ where
     ) -> io::Result<()> {
         let file_size = entry.file_size;
         io_copy_exact(self, writer, file_size)?;
-        let position = align_n_bytes(entry.file_size, 4) + entry.file_size;
+        let position = align_n_bytes(entry.file_size, 4);
         self.seek(io::SeekFrom::Current(position.into()))?;
         Ok(())
     }
@@ -551,9 +619,11 @@ pub trait CpioWriter {
 
     fn write_cpio_file(&mut self, path: &PathBuf) -> io::Result<()> {
         let entry: FileEntry = path.try_into()?;
-        self.write_cpio_entry(entry)?;
-        let mut file = File::open(path)?;
-        self.write_cpio_entry_payload(&mut file)
+        if entry.mode & 0o170000 == 0o040000 {
+            self.write_cpio_record(entry, &mut io::empty())
+        } else {
+            self.write_cpio_record(entry, &mut File::open(path)?)
+        }
     }
 
     fn write_cpio_files(&mut self, paths: Vec<PathBuf>) -> io::Result<()> {
@@ -564,8 +634,17 @@ pub trait CpioWriter {
     }
 
     fn write_cpio_record<R: Read>(&mut self, record: FileEntry, data: &mut R) -> io::Result<()> {
+        let size = record.file_size;
         self.write_cpio_entry(record)?;
-        self.write_cpio_entry_payload(data)
+        let mut limited = data.take(u64::from(size));
+        self.write_cpio_entry_payload(&mut limited)?;
+        if limited.limit() != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "Truncated CPIO payload",
+            ));
+        }
+        Ok(())
     }
 
     fn write_cpio_records<R: Read>(&mut self, records: Vec<(FileEntry, &mut R)>) -> io::Result<()> {
@@ -611,8 +690,12 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
 
     pub fn add_raw_file(mut self, path: &PathBuf) -> io::Result<Self> {
         let record: FileEntry = path.try_into()?;
-        let reader = File::open(path)?;
-        self.records.push((record, Box::new(reader)));
+        let reader: Box<dyn Read> = if record.mode & 0o170000 == 0o040000 {
+            Box::new(io::empty())
+        } else {
+            Box::new(File::open(path)?)
+        };
+        self.records.push((record, reader));
         Ok(self)
     }
 
@@ -620,8 +703,12 @@ impl<W: Write + CpioWriter> CpioBuilder<W> {
         let file = PathBuf::from(path);
         let mut record: FileEntry = (&file).try_into()?;
         record.name = as_path.to_owned();
-        let reader = File::open(&file)?;
-        self.records.push((record, Box::new(reader)));
+        let reader: Box<dyn Read> = if record.mode & 0o170000 == 0o040000 {
+            Box::new(io::empty())
+        } else {
+            Box::new(File::open(&file)?)
+        };
+        self.records.push((record, reader));
         Ok(self)
     }
 
@@ -760,10 +847,12 @@ mod tests {
         write_hex(&mut data, 0); // rdev_major
         write_hex(&mut data, 0); // rdev_minor
         write_hex(&mut data, MAX_NAME_SIZE); // name_size - at limit
-        data.extend_from_slice(&[0u8; 8]); // checksum
+        data.extend_from_slice(b"00000000"); // checksum
 
         // Add name data (MAX_NAME_SIZE bytes)
-        data.extend_from_slice(&vec![b'a'; MAX_NAME_SIZE as usize]);
+        data.extend_from_slice(&vec![b'a'; MAX_NAME_SIZE as usize - 1]);
+        data.push(0);
+        data.extend_from_slice(&[0; 2]);
 
         let mut reader = std::io::Cursor::new(data);
         let result = FileEntry::read(&mut reader);
