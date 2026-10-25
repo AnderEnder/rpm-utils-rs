@@ -28,6 +28,9 @@ cargo build --release
 # View RPM package info
 cargo run --bin rpm-info -- /path/to/package.rpm
 
+# Check integrity digests (does not authenticate an OpenPGP signature)
+cargo run --bin rpm-info -- --verify /path/to/package.rpm
+
 # Extract CPIO from RPM
 cargo run --bin rpm2cpio -- /path/to/package.rpm > payload.cpio
 ```
@@ -55,7 +58,10 @@ symbolic links, file metadata, SHA-256 file and payload digests, and RPM v4
 immutable regions with the standard header digests. It stages data in temporary
 files and replaces the destination after the package is complete. It does not
 create an OpenPGP signature. `build()` remains the low-level API for callers
-writing their own header and payload.
+writing their own header and payload. Parsed packages expose
+`verify_integrity()` to check available supported digests over the complete
+header and payload. Verification fails if supported digest coverage is incomplete;
+it does not establish the identity of a package signer.
 
 `add_file_as(source, destination)` maps an explicit installation path. `add_file`,
 `add_link` and `add_directory` preserve relative source paths; absolute sources

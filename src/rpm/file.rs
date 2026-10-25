@@ -65,12 +65,15 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
     }
 
     pub fn copy_payload(self, path: &Path) -> io::Result<u64> {
-        let mut writer = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(path)?;
-        self.copy_payload_to(&mut writer)
+        let parent = path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let mut output = tempfile::NamedTempFile::new_in(parent)?;
+        let count = self.copy_payload_to(&mut output)?;
+        output.as_file_mut().sync_all()?;
+        output.persist(path).map_err(|error| error.error)?;
+        Ok(count)
     }
 
     /// Decompress the payload into an arbitrary destination, such as stdout.
@@ -89,21 +92,7 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
             .as_string()
             .ok_or_else(|| io::Error::other("Compression is not defined"))?;
 
-        match compressor.as_str() {
-            "gzip" => Ok(Box::new(GzDecoder::new(self.file))),
-            "bzip2" => Ok(Box::new(BzDecoder::new(self.file))),
-            "zstd" => Ok(Box::new(Decoder::new(self.file)?)),
-            "xz" => Ok(Box::new(XzDecoder::new(self.file))),
-            "lzma" => Ok(Box::new(XzDecoder::new_stream(
-                self.file,
-                Stream::new_lzma_decoder(u64::MAX)?,
-            ))),
-            "none" => Ok(Box::new(self.file)),
-            format => Err(io::Error::other(format!(
-                "Decompressor \"{}\" is not implemented",
-                format
-            ))),
-        }
+        decompress(self.file, &compressor)
     }
 }
 
@@ -188,4 +177,25 @@ fn check_package_format(tags: &Tags<Tag>) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+pub(super) fn decompress<'a, R: Read + 'a>(
+    reader: R,
+    compressor: &str,
+) -> io::Result<Box<dyn Read + 'a>> {
+    match compressor {
+        "gzip" => Ok(Box::new(GzDecoder::new(reader))),
+        "bzip2" => Ok(Box::new(BzDecoder::new(reader))),
+        "zstd" => Ok(Box::new(Decoder::new(reader)?)),
+        "xz" => Ok(Box::new(XzDecoder::new(reader))),
+        "lzma" => Ok(Box::new(XzDecoder::new_stream(
+            reader,
+            Stream::new_lzma_decoder(u64::MAX)?,
+        ))),
+        "none" => Ok(Box::new(reader)),
+        format => Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!("Decompressor {format:?} is not implemented"),
+        )),
+    }
 }

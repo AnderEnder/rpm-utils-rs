@@ -14,10 +14,17 @@ struct Args {
     /// Show internal debug information
     #[arg(long = "debug", short = 'd')]
     debug: bool,
+
+    /// Verify package integrity digests (does not authenticate OpenPGP signatures)
+    #[arg(long)]
+    verify: bool,
 }
 
 fn run(args: Args) -> io::Result<()> {
-    let file = RPMFile::open(args.path)?;
+    let mut file = RPMFile::open(args.path)?;
+    if args.verify {
+        file.verify_integrity()?;
+    }
     let info: RPMInfo = (&file).into();
 
     if args.debug {
