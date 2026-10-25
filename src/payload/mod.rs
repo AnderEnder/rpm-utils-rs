@@ -74,3 +74,15 @@ bitflags! {
         const ARTIFACT = 1 << 12;
     }
 }
+
+/// RPM counts regular-file and symlink data once per inode; directories do not
+/// contribute to the installed-size tag (rpmbuild build/files.cc).
+pub(crate) fn installed_size(files: &[FileInfo]) -> u64 {
+    let mut seen = std::collections::HashSet::new();
+    files
+        .iter()
+        .filter(|file| matches!(file.mode & 0o170000, 0o100000 | 0o120000))
+        .filter(|file| file.inode == 0 || seen.insert((file.device, file.inode)))
+        .map(|file| file.size)
+        .sum()
+}

@@ -181,3 +181,21 @@ fn native_archive_reader_can_read_generated_rpm() -> io::Result<()> {
     assert!(String::from_utf8_lossy(&output.stdout).contains("usr/share/native/file"));
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn installed_size_counts_hardlinked_content_once() -> io::Result<()> {
+    let directory = tempdir()?;
+    let tree = directory.path().join("tree");
+    std::fs::create_dir(&tree)?;
+    std::fs::write(tree.join("file"), b"content")?;
+    std::fs::hard_link(tree.join("file"), tree.join("alias"))?;
+    let package = RPMBuilder::new()
+        .filename(directory.path().join("test.rpm"))
+        .package_name("size")
+        .version("1")
+        .add_file_as(tree, "/opt/tree")
+        .build_package()?;
+    assert_eq!(RPMInfo::from(&package).size, 7);
+    Ok(())
+}

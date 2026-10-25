@@ -401,7 +401,7 @@ impl RPMBuilder {
             .insert_arch(self.arch)
             .insert(Tag::Os, RType::String("linux".into()))
             .insert_group(self.package_group.unwrap_or_default())
-            .insert_size(infos.iter().map(|file| file.size).sum())
+            .insert_size(crate::payload::installed_size(&infos))
             .insert_license(self.license.unwrap_or_default())
             .insert_source_rpm(self.source_rpm.unwrap_or_default())
             .insert_build_time(self.build_time)
