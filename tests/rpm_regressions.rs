@@ -118,3 +118,36 @@ fn info_handles_optional_tags_single_file_arrays_and_large_epoch() {
         .is_empty()
     );
 }
+
+#[test]
+fn metadata_conversion_retains_file_entries_and_digest_algorithm() -> io::Result<()> {
+    let directory = tempdir()?;
+    let source = directory.path().join("file");
+    std::fs::write(&source, b"metadata")?;
+    let rpm = RPMBuilder::new()
+        .filename(directory.path().join("test.rpm"))
+        .package_name("metadata")
+        .version("1")
+        .add_file_as(&source, "/usr/share/test/file")
+        .build_package()?;
+    let info = RPMInfo::from(&rpm);
+    let expected_digest = info.payload.files[0].digest.clone();
+    assert_eq!(info.payload.file_digest_algorithm, 8);
+    let mut converted = info.try_into_rpm(Cursor::new(Vec::new()))?;
+    converted.write_head()?;
+    let parsed = RPMFile::read(Cursor::new(converted.file.into_inner()))?;
+    let info = RPMInfo::from(&parsed);
+    assert_eq!(info.payload.files.len(), 1);
+    assert_eq!(info.payload.files[0].name, "/usr/share/test/file");
+    assert_eq!(info.payload.files[0].digest, expected_digest);
+    assert_eq!(info.payload.file_digest_algorithm, 8);
+    assert!(
+        RPMInfo {
+            build_time: -1,
+            ..Default::default()
+        }
+        .try_into_rpm(Vec::new())
+        .is_err()
+    );
+    Ok(())
+}

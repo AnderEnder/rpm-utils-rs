@@ -40,6 +40,8 @@ impl Default for FileInfo {
 #[derive(Debug, Default)]
 pub struct RPMPayload {
     pub size: u64,
+    /// RPM hash algorithm identifier; zero leaves the legacy default unspecified.
+    pub file_digest_algorithm: u32,
     pub format: String,
     pub compressor: String,
     pub flags: String,

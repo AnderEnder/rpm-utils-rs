@@ -1,6 +1,6 @@
 use chrono::{Local, TimeZone};
 use std::fmt;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 
 use super::file::RPMFile;
 use crate::header::{SignatureTag, Tag, Tags};
@@ -126,8 +126,10 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
             })
             .collect();
         let payload = RPMPayload {
+            file_digest_algorithm: number(Tag::FileDigestAlgo) as u32,
             size: signature_tags
-                .get_value(SignatureTag::PayloadSize)
+                .get_value(SignatureTag::LongArchiveSize)
+                .or_else(|| signature_tags.get_value(SignatureTag::PayloadSize))
                 .and_then(|v| v.as_u64())
                 .unwrap_or_default(),
             format: string(Tag::PayloadFormat),
@@ -162,7 +164,19 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
 }
 
 impl RPMInfo {
+    /// Legacy infallible conversion; panics for an invalid build timestamp.
+    /// Prefer try_into_rpm() for values originating outside the application.
     pub fn into_rpm<T: Write>(self, writer: T) -> RPMFile<T> {
+        self.try_into_rpm(writer).expect("Invalid RPM metadata")
+    }
+
+    pub fn try_into_rpm<T: Write>(self, writer: T) -> io::Result<RPMFile<T>> {
+        if u32::try_from(self.build_time).is_err() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Build time must fit u32",
+            ));
+        }
         let lead = Lead::from(&self);
         let mut signature_tags = Tags::<SignatureTag>::new();
         let mut header_tags = Tags::<Tag>::new();
@@ -185,15 +199,26 @@ impl RPMInfo {
             .insert_payload_compressor(self.payload.compressor)
             .insert_payload_flags(self.payload.flags);
 
+        super::builder::insert_file_tags(&mut header_tags, &self.payload.files);
+        header_tags.insert(
+            Tag::I18nTable,
+            crate::header::RType::StringArray(vec!["C".into()]),
+        );
+        if self.payload.file_digest_algorithm != 0 {
+            header_tags.insert(
+                Tag::FileDigestAlgo,
+                crate::header::RType::Int32(self.payload.file_digest_algorithm),
+            );
+        }
         signature_tags.insert_payload_size(self.payload.size);
 
-        RPMFile {
+        Ok(RPMFile {
             lead,
             header_tags,
             signature_tags,
             payload_offset: 0,
             file: writer,
-        }
+        })
     }
 }
 
@@ -201,11 +226,8 @@ impl From<&RPMInfo> for Lead {
     fn from(info: &RPMInfo) -> Self {
         let mut name = [0_u8; 66];
 
-        let _size = info
-            .name
-            .as_bytes()
-            .read(&mut name)
-            .expect("create a name with 66 bytes");
+        let size = info.name.len().min(65);
+        name[..size].copy_from_slice(&info.name.as_bytes()[..size]);
 
         Self {
             major: 3,

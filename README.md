@@ -77,7 +77,9 @@ Extraction reconstructs hard-link groups and restores directory metadata after
 children are extracted. Readers work with streams, including decompressor output.
 Special files return an unsupported-type error; extraction requires a destination
 directory that other processes cannot modify concurrently.
-RPM epochs use `u32` throughout the metadata API.
+RPM epochs use `u32` throughout the metadata API. Metadata conversion preserves
+file lists and their digest algorithm; use `RPMInfo::try_into_rpm()` to report
+invalid timestamps as errors instead of using the legacy infallible conversion.
 
 The current implementation targets legacy v3/v4 packages; RPM v6 is a distinct
 package format and is not supported. An explicit `RPMTAG_RPMFORMAT` value other

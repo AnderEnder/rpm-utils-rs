@@ -584,7 +584,7 @@ fn digest_file<D: Digest + Default>(path: &Path) -> io::Result<Vec<u8>> {
     Ok(digest.finalize().to_vec())
 }
 
-fn insert_file_tags(tags: &mut Tags<Tag>, files: &[FileInfo]) {
+pub(super) fn insert_file_tags(tags: &mut Tags<Tag>, files: &[FileInfo]) {
     if files.is_empty() {
         return;
     }
