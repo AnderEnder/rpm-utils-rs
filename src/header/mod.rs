@@ -1,9 +1,11 @@
 mod index;
 mod lead;
+mod raw;
 mod tags;
 
 pub use index::*;
 pub use lead::*;
+pub use raw::*;
 pub use tags::*;
 
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -168,10 +170,11 @@ where
                 let tag_value = match item.itype {
                     Type::Null => RType::Null,
                     Type::Char => {
-                        if item.count != 1 {
-                            return Err(invalid_tag_data());
+                        if item.count == 1 {
+                            RType::Char(char::from(*tail.first().ok_or_else(invalid_tag_data)?))
+                        } else {
+                            extract(data, item.offset, item.count, RType::Int8, RType::Int8Array)?
                         }
-                        RType::Char(char::from(*tail.first().ok_or_else(invalid_tag_data)?))
                     }
                     Type::Int8 => {
                         extract(data, item.offset, item.count, RType::Int8, RType::Int8Array)?
