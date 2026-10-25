@@ -92,3 +92,25 @@ fn header_writer_uses_correct_types_alignment_and_no_trailing_padding() -> io::R
     assert_eq!(parsed.0, tags.0);
     Ok(())
 }
+
+#[test]
+fn size_and_timestamp_helpers_use_the_rpm_numeric_types() {
+    let mut tags = Tags::new();
+    tags.insert_size(42).insert_build_time(123456);
+    assert_eq!(tags.get_value(Tag::Size), Some(RType::Int32(42)));
+    assert_eq!(tags.get_value(Tag::BuildTime), Some(RType::Int32(123456)));
+    tags.insert_size(u64::from(u32::MAX) + 1);
+    assert!(tags.get_value(Tag::Size).is_none());
+    assert_eq!(
+        tags.get_value(Tag::LongSize),
+        Some(RType::Int64(u64::from(u32::MAX) + 1))
+    );
+    tags.insert_size(1);
+    assert!(tags.get_value(Tag::LongSize).is_none());
+    let mut signatures = Tags::new();
+    signatures.insert_payload_size(42);
+    assert_eq!(
+        signatures.get_value(rpm_utils::header::SignatureTag::PayloadSize),
+        Some(RType::Int32(42))
+    );
+}

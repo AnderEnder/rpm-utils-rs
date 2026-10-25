@@ -209,7 +209,7 @@ impl From<&RPMInfo> for Lead {
 
         Self {
             major: 3,
-            minor: 1,
+            minor: 0,
             name,
             ..Default::default()
         }

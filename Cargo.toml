@@ -10,7 +10,6 @@ num-derive = "0.4"
 num-traits = "0.2"
 strum_macros = "0.28.0"
 chrono = "0.4"
-itertools = "0.14"
 flate2 = "1"
 bzip2 = "0.6"
 zstd = "0.13"
@@ -22,7 +21,9 @@ hostname = "0.4"
 bitflags = "2"
 log = "0.4"
 
-[dev-dependencies]
+sha2 = "0.10"
+sha1 = "0.10"
+md-5 = "0.10"
 tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]

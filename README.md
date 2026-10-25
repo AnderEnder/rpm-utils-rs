@@ -3,7 +3,7 @@
 [![Rust](https://github.com/AnderEnder/rpm-utils-rs/actions/workflows/rust.yml/badge.svg)](https://github.com/AnderEnder/rpm-utils-rs/actions/workflows/rust.yml)
 [![codecov](https://codecov.io/gh/AnderEnder/rpm-utils-rs/branch/master/graph/badge.svg)](https://codecov.io/gh/AnderEnder/rpm-utils-rs)
 
-**Experimental** Rust library for parsing and creating RPM packages based on the [RPM specification](https://rpm-software-management.github.io/rpm/manual/format.html).
+**Experimental** Rust library for parsing and creating RPM packages based on the [RPM v4 specification](https://rpm.org/docs/6.0.x/manual/format_v4.html).
 
 ## Features
 
@@ -32,6 +32,35 @@ cargo run --bin rpm-info -- /path/to/package.rpm
 cargo run --bin rpm2cpio -- /path/to/package.rpm > payload.cpio
 ```
 
+Create a complete unsigned RPM v4 package:
+
+```rust,no_run
+use rpm_utils::RPMBuilder;
+
+# fn main() -> std::io::Result<()> {
+RPMBuilder::new()
+    .filename("tool-1.0.rpm")
+    .package_name("tool")
+    .version("1.0")
+    .license("MIT".into())
+    .summary("Example tool")
+    .add_file_as("target/release/tool", "/usr/bin/tool")
+    .build_package()?;
+# Ok(())
+# }
+```
+
+`build_package()` includes configured files, recursive directories and Unix
+symbolic links, file metadata, SHA-256 file and payload digests, and RPM v4
+immutable regions with the standard header digests. It stages data in temporary
+files and replaces the destination after the package is complete. It does not
+create an OpenPGP signature. `build()` remains the low-level API for callers
+writing their own header and payload.
+
+`add_file_as(source, destination)` maps an explicit installation path. `add_file`,
+`add_link` and `add_directory` preserve relative source paths; absolute sources
+use their final filename as the package path. Directory inputs are recursive.
+
 CPIO supports regular files and directory entries, plus symbolic links on Unix.
 Extraction reconstructs hard-link groups and restores directory metadata after
 children are extracted. Readers work with streams, including decompressor output.
@@ -55,4 +84,4 @@ This is an experimental project. APIs may change without notice.
 
 ## License
 
-See LICENSE file for details.
+No license file has been provided in this repository.

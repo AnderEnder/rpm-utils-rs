@@ -106,11 +106,12 @@ impl FromStr for Lead {
 
     fn from_str(info: &str) -> Result<Self, Self::Err> {
         let mut name = [0_u8; 66];
-        let _size = info.as_bytes().read(&mut name)?;
+        let size = info.len().min(65);
+        name[..size].copy_from_slice(&info.as_bytes()[..size]);
 
         Ok(Lead {
             major: 3,
-            minor: 1,
+            minor: 0,
             name,
             ..Default::default()
         })
@@ -150,7 +151,7 @@ impl Default for Lead {
         Lead {
             magic: MAGIC,
             major: 3,
-            minor: 1,
+            minor: 0,
             rpm_type: Type::Binary,
             archnum: 0,
             name: [0; 66],

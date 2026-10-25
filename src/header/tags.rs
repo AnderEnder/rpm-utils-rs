@@ -270,6 +270,7 @@ pub enum Tag {
     AutoInstalled = 5094,
     Identity = 5095,
     ModularityLabel = 5096,
+    PayloadDigestAlt = 5097,
     RpmFormat = 5114,
     #[default]
     Other = 8888,
@@ -297,7 +298,7 @@ pub enum SignatureTag {
     SHA1Header = 269,
     LongSigSize = 270,
     LongArchiveSize = 271,
-    SHA256Header = 273,
+    SHA256Header = 272,
     Size = 1000,
     LEMD5_1 = 1001,
     PGP = 1002,

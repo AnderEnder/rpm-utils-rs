@@ -24,12 +24,12 @@ fn payload_roundtrip_finishes_every_compression_format() -> io::Result<()> {
         rpm.signature_tags
             .insert(SignatureTag::MD5, RType::Bin(vec![1, 2, 3]));
         rpm.header_tags
-            .insert(Tag::LongFileSizes, RType::Bin(vec![5]));
+            .insert(Tag::PayloadDigestAlt, RType::Bin(vec![5]));
         let mut header = Vec::new();
         header.write_header(&rpm.header_tags)?;
         if header.len() % 8 == 0 {
             rpm.header_tags
-                .insert(Tag::LongFileSizes, RType::Bin(vec![5, 6]));
+                .insert(Tag::PayloadDigestAlt, RType::Bin(vec![5, 6]));
         }
         rpm.write_head()?;
         let payload_start = std::fs::metadata(&path)?.len();

@@ -30,7 +30,7 @@ impl Default for FileInfo {
             mtime: 0,
             digest: "".to_owned(),
             mode: 33188,
-            linkname: "root".to_owned(),
+            linkname: String::new(),
             device: 0,
             inode: 0,
         }

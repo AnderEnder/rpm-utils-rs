@@ -10,7 +10,6 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use omnom::ReadBytes;
 use omnom::prelude::*;
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::hash::Hash;
 use std::io::{self, Read, Seek, Write};
 use std::mem::size_of;
@@ -241,7 +240,7 @@ impl Tags<Tag> {
     }
 
     pub fn insert_group(&mut self, group: String) -> &mut Self {
-        self.insert(Tag::Group, RType::String(group))
+        self.insert(Tag::Group, RType::I18nstring(group))
     }
 
     pub fn insert_arch(&mut self, arch: String) -> &mut Self {
@@ -249,7 +248,12 @@ impl Tags<Tag> {
     }
 
     pub fn insert_size(&mut self, size: u64) -> &mut Self {
-        self.insert(Tag::Size, RType::Int64(size))
+        self.0.remove(&Tag::Size);
+        self.0.remove(&Tag::LongSize);
+        match u32::try_from(size) {
+            Ok(size) => self.insert(Tag::Size, RType::Int32(size)),
+            Err(_) => self.insert(Tag::LongSize, RType::Int64(size)),
+        }
     }
 
     pub fn insert_license(&mut self, license: String) -> &mut Self {
@@ -257,11 +261,11 @@ impl Tags<Tag> {
     }
 
     pub fn insert_summary(&mut self, summary: String) -> &mut Self {
-        self.insert(Tag::Summary, RType::String(summary))
+        self.insert(Tag::Summary, RType::I18nstring(summary))
     }
 
     pub fn insert_description(&mut self, description: String) -> &mut Self {
-        self.insert(Tag::Description, RType::String(description))
+        self.insert(Tag::Description, RType::I18nstring(description))
     }
 
     pub fn insert_build_host(&mut self, host: String) -> &mut Self {
@@ -285,8 +289,8 @@ impl Tags<Tag> {
     }
 
     pub fn insert_build_time(&mut self, time: i64) -> &mut Self {
-        let time_u64 = time.try_into().expect("Timestamp is out of u64");
-        self.insert(Tag::BuildTime, RType::Int64(time_u64))
+        let time = u32::try_from(time).expect("RPM build time must fit u32");
+        self.insert(Tag::BuildTime, RType::Int32(time))
     }
 
     pub fn insert_pre_install(&mut self, script: String) -> &mut Self {
@@ -308,7 +312,12 @@ impl Tags<Tag> {
 
 impl Tags<SignatureTag> {
     pub fn insert_payload_size(&mut self, size: u64) -> &mut Self {
-        self.insert(SignatureTag::PayloadSize, RType::Int64(size))
+        self.0.remove(&SignatureTag::PayloadSize);
+        self.0.remove(&SignatureTag::LongArchiveSize);
+        match u32::try_from(size) {
+            Ok(size) => self.insert(SignatureTag::PayloadSize, RType::Int32(size)),
+            Err(_) => self.insert(SignatureTag::LongArchiveSize, RType::Int64(size)),
+        }
     }
 }
 
@@ -383,6 +392,12 @@ where
                 }
 
                 RType::String(s) => {
+                    if s.contains('\0') {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "NUL in RPM string",
+                        ));
+                    }
                     data.write_all(s.as_bytes())?;
                     data.write_be(0_u8)?;
                     let index = Index::from(tag, value, current, 1);
@@ -399,12 +414,24 @@ where
                     let index = Index::from(tag, value, current, vector.len());
                     address.write_index(index)?;
                     for s in vector {
+                        if s.contains('\0') {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidInput,
+                                "NUL in RPM string",
+                            ));
+                        }
                         data.write_all(s.as_bytes())?;
                         data.write_be(0_u8)?;
                     }
                 }
 
                 RType::I18nstring(s) => {
+                    if s.contains('\0') {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "NUL in RPM string",
+                        ));
+                    }
                     data.write_all(s.as_bytes())?;
                     data.write_be(0_u8)?;
                     let index = Index::from(tag, value, current, 1);
@@ -454,6 +481,45 @@ where
 
         Ok(())
     }
+}
+
+/// Encode a v4 immutable header region (62 for signatures, 63 for metadata).
+/// Region trailers contain a negative index byte size in their offset field.
+pub fn encode_region<T: ToPrimitive + Eq + Hash + Copy>(
+    tags: &Tags<T>,
+    region: T,
+) -> io::Result<Vec<u8>> {
+    let region_id = region.to_u32().ok_or_else(invalid_tag_data)?;
+    if !matches!(region_id, 62 | 63)
+        || tags
+            .0
+            .keys()
+            .any(|tag| tag.to_u32().is_none_or(|id| id <= region_id))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Invalid or duplicate RPM region tag",
+        ));
+    }
+    let mut raw = Vec::new();
+    raw.write_header(tags)?;
+    let count = tags.0.len() + 1;
+    let data_offset = 16 + tags.0.len() * 16;
+    let size = raw.len() - data_offset;
+    let size_u32 = u32::try_from(size + 16).map_err(|_| invalid_tag_data())?;
+    if size + 16 > MAX_HEADER_SIZE || count > MAX_HEADER_SIZE / 16 {
+        return Err(invalid_tag_data());
+    }
+    let mut result = Vec::new();
+    HeaderLead::from(count, size_u32).write(&mut result)?;
+    for value in [region_id, 7, size as u32, 16] {
+        result.write_be(value)?;
+    }
+    result.extend_from_slice(&raw[16..]);
+    for value in [region_id, 7, (-(count as i32 * 16)) as u32, 16] {
+        result.write_be(value)?;
+    }
+    Ok(result)
 }
 
 fn invalid_tag_data() -> io::Error {
