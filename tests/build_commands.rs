@@ -1,5 +1,7 @@
 use rpm_utils::{PackageManifest, RPMFile, RPMInfo, header::Tag, payload::CpioRead};
-use std::{io, path::Path, process::Command};
+#[cfg(feature = "cli")]
+use std::process::Command;
+use std::{io, path::Path};
 
 fn manifest(dir: &Path) -> io::Result<std::path::PathBuf> {
     std::fs::write(dir.join("app.jar"), b"PK\x03\x04jvm app")?;
@@ -43,6 +45,7 @@ fn manifests_build_repeatable_noarch_packages_with_runtime_requirements() -> io:
     assert!(PackageManifest::from_toml("typo = true").is_err());
     Ok(())
 }
+#[cfg(feature = "cli")]
 #[test]
 fn rpm_build_resolves_relative_paths_and_rejects_invalid_source_date_epoch() -> io::Result<()> {
     let dir = tempfile::tempdir()?;
@@ -73,6 +76,7 @@ fn rpm_build_resolves_relative_paths_and_rejects_invalid_source_date_epoch() -> 
     assert_eq!(std::fs::read(output)?, original);
     Ok(())
 }
+#[cfg(feature = "cli")]
 fn cargo_project(dir: &Path) -> io::Result<()> {
     std::fs::create_dir(dir.join("src"))?;
     std::fs::write(dir.join("src/main.rs"), "fn main() {}")?;
@@ -96,6 +100,7 @@ mode = "0644"
     )?;
     Ok(())
 }
+#[cfg(feature = "cli")]
 #[test]
 fn own_cargo_subcommand_builds_and_packages_metadata_assets() -> io::Result<()> {
     let dir = tempfile::tempdir()?;
@@ -134,6 +139,7 @@ fn own_cargo_subcommand_builds_and_packages_metadata_assets() -> io::Result<()> 
     assert_eq!(info.payload.files[0].name, "/usr/share/fixture/app.jar");
     Ok(())
 }
+#[cfg(feature = "cli")]
 #[test]
 fn cargo_packaging_without_build_and_target_conflicts_preserve_output() -> io::Result<()> {
     let dir = tempfile::tempdir()?;
@@ -165,6 +171,7 @@ fn cargo_packaging_without_build_and_target_conflicts_preserve_output() -> io::R
 }
 
 #[cfg(unix)]
+#[cfg(feature = "cli")]
 #[test]
 fn standalone_build_commands_receive_target_environment_and_fail_atomically() -> io::Result<()> {
     let dir = tempfile::tempdir()?;
@@ -193,6 +200,7 @@ fn standalone_build_commands_receive_target_environment_and_fail_atomically() ->
     Ok(())
 }
 
+#[cfg(feature = "cli")]
 #[test]
 fn cargo_workspaces_require_selection_and_resolve_member_paths() -> io::Result<()> {
     let dir = tempfile::tempdir()?;

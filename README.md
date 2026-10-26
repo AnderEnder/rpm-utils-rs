@@ -27,6 +27,20 @@
 
 ## Usage
 
+The `cli` feature is enabled by default and includes all command-line tools.
+Library users can omit the CLI dependencies:
+
+```toml
+[dependencies]
+rpm-utils = { version = "0.2", default-features = false }
+```
+
+Install the tools with `cargo install rpm-utils --locked`. If default features
+are disabled, enable the tools explicitly with `--features cli`. All nine
+executables are installed by default. Names such as `rpm2cpio` can overlap with
+system tools; choose a separate installation root with `cargo install --root PATH`
+when needed. `cargo rpm-build` coexists with the third-party `cargo rpm` command.
+
 ```bash
 # Build the project
 cargo build --release

@@ -78,6 +78,7 @@ fn failed_decompression_preserves_destination() -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "cli")]
 #[test]
 fn cli_verify_reports_corruption_with_failure_status() -> io::Result<()> {
     let directory = tempdir()?;
