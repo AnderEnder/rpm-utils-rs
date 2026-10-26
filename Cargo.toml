@@ -3,8 +3,19 @@ name = "rpm-utils"
 version = "0.2.0"
 authors = ["Andrii Radyk <ander.ender@gmail.com>"]
 edition = "2024"
-
+rust-version = "1.99.1"
+license = "MIT"
+description = "Read, build, compare, edit, and lint RPM packages and CPIO archives"
+repository = "https://github.com/AnderEnder/rpm-utils-rs"
+documentation = "https://docs.rs/rpm-utils"
+readme = "README.md"
+keywords = ["rpm", "cpio", "packaging", "linux", "cli"]
+categories = ["command-line-utilities", "development-tools::build-utils", "parser-implementations"]
 autobins = false
+include = ["/src/**", "/tests/**", "/docs/**", "/README.md", "/LICENSE", "/CHANGELOG.md", "/Cargo.toml", "/Cargo.lock", "/rust-toolchain.toml"]
+
+[package.metadata.docs.rs]
+no-default-features = true
 
 [features]
 default = ["cli"]

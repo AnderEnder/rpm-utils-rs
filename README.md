@@ -1,4 +1,4 @@
-# rpm-utils-rs
+# rpm-utils
 
 [![Rust](https://github.com/AnderEnder/rpm-utils-rs/actions/workflows/rust.yml/badge.svg)](https://github.com/AnderEnder/rpm-utils-rs/actions/workflows/rust.yml)
 [![codecov](https://codecov.io/gh/AnderEnder/rpm-utils-rs/branch/master/graph/badge.svg)](https://codecov.io/gh/AnderEnder/rpm-utils-rs)
@@ -22,6 +22,7 @@
 - `rpm2cpio` - Extract CPIO payload from RPM packages
 - `rpm-edit` - Modify metadata, files, or permissions and publish atomically
 - `rpm-lint` - Inspect metadata, payload and integrity; optionally repair
+- `rpm-diff` - Compare metadata and installed file content
 - `cpio-create` - Create CPIO archives
 - `cpio-extract` - Extract CPIO archives
 
@@ -81,22 +82,42 @@ missing content, ambiguous file identity/ownership, conflicting modes, and other
 problems it cannot repair reliably. Unknown metadata IDs and all translations are
 preserved through the editor's raw header API. Opaque arrays that may follow file
 entries must be explicitly updated or removed before changing the file list.
-See [editing and linting](docs/editing-and-linting.md) for the API and boundaries.
+See [editing and linting](https://github.com/AnderEnder/rpm-utils-rs/blob/master/docs/editing-and-linting.md) for the API and boundaries.
 
-Create a complete unsigned RPM v4 package:
+Create, read, verify, and edit a complete unsigned RPM v4 package. This example
+uses `tempfile = "3"` as a development dependency:
 
-```rust,no_run
-use rpm_utils::RPMBuilder;
+```rust
+use rpm_utils::{RPMBuilder, RPMEditor, RPMFile, RPMInfo, diff_rpm};
 
 # fn main() -> std::io::Result<()> {
+// Use an isolated directory; a real application supplies its own source paths.
+let directory = tempfile::tempdir()?;
+let source = directory.path().join("tool.conf");
+std::fs::write(&source, b"enabled=true\n")?;
+let original = directory.path().join("tool-1.0.rpm");
 RPMBuilder::new()
-    .filename("tool-1.0.rpm")
+    .filename(&original)
     .package_name("tool")
     .version("1.0")
+    .target("noarch")?
     .license("MIT".into())
-    .summary("Example tool")
-    .add_file_as("target/release/tool", "/usr/bin/tool")
+    .summary("Example tool configuration")
+    .add_file_as(&source, "/etc/tool.conf")
     .build_package()?;
+
+let mut package = RPMFile::open(&original)?;
+package.verify_integrity()?; // Checks corruption, not signer identity.
+let metadata = RPMInfo::from(&package);
+assert_eq!(metadata.name, "tool");
+drop(package);
+
+let edited = directory.path().join("tool-edited.rpm");
+let mut editor = RPMEditor::open(&original)?;
+editor.set_text(1004, "Updated summary")?; // RPMTAG_SUMMARY
+editor.save(&edited)?;
+RPMFile::open(&edited)?.verify_integrity()?;
+assert!(!diff_rpm(&original, &edited)?.metadata.is_empty());
 # Ok(())
 # }
 ```
@@ -140,15 +161,12 @@ and [v6](https://rpm.org/docs/6.0.x/manual/format_v6.html) format descriptions.
 
 ## Requirements
 
-- Rust 2024 edition (1.88.0+)
+- Latest stable Rust (currently 1.99.1; Rust 2024 edition).
 
-## Status
+Development and CI track the stable toolchain. Older Rust releases are not part
+of the support policy; the minimum version may increase as stable Rust advances.
 
-This is an experimental project. APIs may change without notice.
-
-## License
-
-No license file has been provided in this repository.
+## Compare, preview, and cross-package
 
 Compare package metadata and installed file content (exit 1 when different):
 
@@ -174,5 +192,38 @@ rpm-build --manifest rpm.toml
 ```
 
 Cargo packaging settings live in `[package.metadata.rpm]`. See
-[cross-packaging and Cargo integration](docs/cross-packaging.md) for manifests,
+[cross-packaging and Cargo integration](https://github.com/AnderEnder/rpm-utils-rs/blob/master/docs/cross-packaging.md) for manifests,
 compiler commands, JVM packaging, target validation and reproducible output.
+
+## API and compatibility policy
+
+This is an experimental pre-1.0 release. Breaking changes to public Rust APIs,
+CLI arguments or exit statuses, JSON report shapes, and manifest formats require
+a minor version increment (`0.2` to `0.3`). Patch releases preserve these contracts;
+malformed-input rejection and correctness/security fixes may become stricter.
+The latest-stable Rust policy above applies independently of API compatibility.
+
+`RPMBuilder`, `RPMFile`, `RPMEditor`, the diff/lint/repair functions and report
+types, package manifests/targets, and the public header/CPIO modules form the
+supported API. Lower-level header and archive interfaces remain available for
+advanced callers. See the [API documentation](https://docs.rs/rpm-utils).
+
+`RPMInfo` and enum-based `Tags` are convenience views: unknown IDs may be coalesced
+and only the first translation is exposed. Use `RawHeader`, `RawTag`, and
+`RPMEditor` to preserve opaque values and translations. Legacy `Tags::get_as_*`
+methods may panic on missing or mistyped values; prefer `get_value()` and checked
+`RType::as_*` conversions. `RPMInfo::into_rpm()` is deprecated; use
+`try_into_rpm()` to handle invalid metadata as errors.
+
+Creation produces unsigned RPM v4 packages. Parsing supports legacy v3/v4;
+RPM v6, OpenPGP signing/authentication, package installation, and dependency
+resolution are outside this release. Linux, macOS, and Windows are tested in CI;
+Unix symbolic-link handling and exclusive-directory extraction have the limits
+listed above. Cross-compilation requires external target toolchains and sysroots.
+
+See the [changelog](https://github.com/AnderEnder/rpm-utils-rs/blob/master/CHANGELOG.md), [implementation status](https://github.com/AnderEnder/rpm-utils-rs/blob/master/docs/implementation-status.md),
+and [release checklist](https://github.com/AnderEnder/rpm-utils-rs/blob/master/docs/releasing.md) for validation and release procedures.
+
+## License
+
+Licensed under the [MIT License](https://github.com/AnderEnder/rpm-utils-rs/blob/master/LICENSE).

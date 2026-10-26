@@ -69,7 +69,7 @@ fn compression_finalization_propagates_output_errors() -> io::Result<()> {
             },
             ..Default::default()
         }
-        .into_rpm(FailingWriter);
+        .try_into_rpm(FailingWriter)?;
         assert!(rpm.write_payload(&input).is_err(), "{compressor}");
     }
     Ok(())

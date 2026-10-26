@@ -42,6 +42,35 @@ jobs:
       - name: Run library-only clippy
         run: cargo clippy --locked --no-default-features --all-targets -- -D warnings
 
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build API documentation
+        run: cargo doc --locked --no-deps --lib
+      - name: Build library-only documentation
+        run: cargo doc --locked --no-default-features --no-deps --lib
+      - name: Test README examples
+        run: cargo test --locked --doc
+      - name: Test library-only README examples
+        run: cargo test --locked --no-default-features --doc
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Test and install the packaged crate
+        run: python3 tools/check-package.py
+      - name: Check publication without uploading
+        run: cargo publish --dry-run --locked
+
   fmt:
     runs-on: ubuntu-latest
     steps:
