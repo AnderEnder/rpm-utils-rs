@@ -119,7 +119,7 @@ jobs:
           for host in ubuntu-latest macos-latest; do
             for arch in aarch64 x86_64; do
               package="packages/cross-packages-${host}/smoke.${arch}.rpm"
-              rpm --checksig --nosignature "$package"
+              rpm --checksig --nosignature --verbose "$package"
               test "$(rpm -qp --queryformat '%{ARCH}' "$package")" = "$arch"
               rpm -qpl "$package" | grep -Fx /usr/bin/rpm-cross-smoke
             done

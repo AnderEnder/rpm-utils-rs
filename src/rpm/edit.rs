@@ -530,7 +530,7 @@ impl RPMEditor {
         signature.set_value(1004, RType::Bin(md5.finalize().to_vec()))?;
         signature.set_value(269, RType::String(hex::encode(sha1::Sha1::digest(&header))))?;
         signature.set_value(
-            272,
+            273,
             RType::String(hex::encode(sha2::Sha256::digest(&header))),
         )?;
         set_number(

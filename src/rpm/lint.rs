@@ -478,7 +478,7 @@ fn check_integrity(package: &mut Package, report: &mut LintReport) -> io::Result
     let header = package.original_header()?;
     for (id, digest) in [
         (269, sha1::Sha1::digest(&header).to_vec()),
-        (272, sha2::Sha256::digest(&header).to_vec()),
+        (273, sha2::Sha256::digest(&header).to_vec()),
     ] {
         if let Some(expected) = package.signature.get(id)
             && !matches_hex(expected, &digest)
@@ -542,7 +542,7 @@ fn check_integrity(package: &mut Package, report: &mut LintReport) -> io::Result
             );
         }
     }
-    let header_covered = [269, 272]
+    let header_covered = [269, 273]
         .iter()
         .any(|id| package.signature.get(*id).is_some());
     if !whole && !(header_covered && payload_covered) {

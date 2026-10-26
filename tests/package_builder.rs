@@ -1,4 +1,4 @@
-use rpm_utils::header::{RType, SignatureTag, Tag};
+use rpm_utils::header::{RType, RawHeader, SignatureTag, Tag};
 use rpm_utils::payload::extract_entries;
 use rpm_utils::{RPMBuilder, RPMInfo};
 use sha2::Digest;
@@ -37,10 +37,17 @@ fn builds_complete_v4_packages_with_independently_checked_digests() -> io::Resul
         let bytes = std::fs::read(&destination)?;
         let read_u32 =
             |offset| u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+        let signature = RawHeader::read(&mut &bytes[96..])?;
+        // RPMSIGTAG_SHA256 is 273 in the RPM wire format, independently of our enum.
+        assert!(signature.get(272).is_none());
         let signature_size = 16 + read_u32(104) * 16 + read_u32(108);
         let header_start = 96 + signature_size.div_ceil(8) * 8;
         let payload_start = rpm.payload_offset as usize;
         let header = &bytes[header_start..payload_start];
+        assert_eq!(
+            signature.strings(273)?,
+            [hex::encode(sha2::Sha256::digest(header))]
+        );
         assert_eq!(
             rpm.signature_tags.get_as_string(SignatureTag::SHA1Header),
             hex::encode(sha1::Sha1::digest(header))
