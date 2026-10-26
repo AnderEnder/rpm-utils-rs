@@ -199,6 +199,7 @@ fn clean_repair_is_byte_identical_and_invalid_edits_preserve_output() -> io::Res
     Ok(())
 }
 
+#[cfg(feature = "cli")]
 #[test]
 fn editing_and_linting_clis_support_json_and_in_place_repair() -> io::Result<()> {
     let directory = tempdir()?;
@@ -676,6 +677,7 @@ fn metadata_preview_reports_signature_removal_without_changing_signed_input() ->
     Ok(())
 }
 
+#[cfg(feature = "cli")]
 #[test]
 fn dry_run_cli_never_writes_requested_paths_and_validates_results() -> io::Result<()> {
     use std::process::Command;

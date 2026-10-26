@@ -21,6 +21,12 @@ use crate::utils::align_n_bytes;
 /// Maximum allowed header size (32 MB) - prevents OOM attacks from malicious RPM files
 const MAX_HEADER_SIZE: usize = 32 * 1024 * 1024;
 
+/// A legacy enum-keyed metadata view; unknown IDs may be coalesced and only the
+/// first I18N translation is exposed. Use [`RawHeader`] for lossless access.
+///
+/// Typed `get_as_*` convenience methods may panic on missing or mistyped tags.
+/// For untrusted metadata, use [`Self::get_value`] and the fallible `as_*`
+/// conversions on [`RType`], or the checked accessors on [`RawTag`].
 #[derive(Debug, Default)]
 pub struct Tags<T>(pub HashMap<T, RType>)
 where

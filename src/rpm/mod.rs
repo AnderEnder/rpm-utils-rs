@@ -9,11 +9,13 @@ mod package;
 mod target;
 mod verify;
 
-pub use builder::*;
-pub use diff::*;
-pub use edit::*;
-pub use file::*;
-pub use info::*;
-pub use lint::*;
-pub use manifest::*;
-pub use target::*;
+pub use builder::RPMBuilder;
+pub use diff::{
+    DiffReport, FileChange, FileContent, FileMetadata, FileSnapshot, TagChange, TagValue, diff_rpm,
+};
+pub use edit::{EditPreview, EditReport, RPMEditor};
+pub use file::RPMFile;
+pub use info::RPMInfo;
+pub use lint::{LintIssue, LintReport, Severity, lint_rpm, repair_rpm};
+pub use manifest::{ManifestFile, PackageManifest};
+pub use target::PackageTarget;

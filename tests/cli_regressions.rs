@@ -1,3 +1,5 @@
+#![cfg(feature = "cli")]
+
 use rpm_utils::RPMBuilder;
 use rpm_utils::payload::{CpioWriter, FileEntry};
 use std::io;

@@ -2,10 +2,11 @@ use rpm_utils::{
     RPMBuilder, RPMEditor, diff_rpm,
     header::{RawTag, Type},
 };
+#[cfg(feature = "cli")]
+use std::process::Command;
 use std::{
     io,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 fn package(dir: &Path) -> io::Result<PathBuf> {
@@ -91,6 +92,7 @@ fn hashes_actual_content_even_when_header_digests_are_unchanged() -> io::Result<
     );
     Ok(())
 }
+#[cfg(feature = "cli")]
 #[test]
 fn cli_reports_equal_different_and_error_statuses() -> io::Result<()> {
     let dir = tempfile::tempdir()?;

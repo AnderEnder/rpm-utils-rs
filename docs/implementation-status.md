@@ -1,6 +1,21 @@
 # Implementation status
 
-Reviewed and tested on 2026-10-25.
+Release preparation reviewed and tested on 2026-10-26; format and interoperability
+review originally completed on 2026-10-25.
+
+## First-release preparation
+
+- MIT license, complete registry metadata, and explicit crate archive contents.
+- Latest stable Rust policy (currently 1.99.1) in the manifest, toolchain file,
+  README, and CI.
+- Default-enabled `cli` feature gates all nine binaries and their Clap/JSON
+  dependencies. Library-only consumers retain all library APIs.
+- Explicit RPM API exports, documented lossy metadata views, and deprecation of
+  the panic-based `RPMInfo::into_rpm()` in favor of `try_into_rpm()`.
+- README-backed crate documentation with an executable create/read/verify/edit
+  example, pre-1.0 compatibility policy, changelog, and release checklist.
+- CI documentation/doctest checks and isolated tests and CLI installation from
+  the actual packaged source, in addition to existing platform/native RPM jobs.
 
 ## Implemented in this review
 
@@ -49,17 +64,23 @@ Reviewed and tested on 2026-10-25.
 
 ## Validation
 
-`cargo test --locked --all-targets`, `cargo fmt --check`, strict Clippy, and
-`git diff --check` pass on macOS (118 tests). Regression tests independently inspect region
+The packaged source passes 118 tests with default features and 107 library-only
+tests on macOS, plus the README doctest in both configurations. Documentation
+with warnings denied, strict Clippy in both configurations, formatting, and
+`git diff --check` pass. All nine tools install into an isolated root and answer
+`--help`; library-only normal dependencies omit Clap and serde_json.
+
+Regression tests independently inspect region
 trailers and digest values, exercise all six compressor choices, cover damaged
 packages and failure preservation, and check extraction contents and inode/link
-behavior. The system libarchive reader can read generated RPM packages. An
-independently constructed crc fixture is accepted by native cpio and the Rust
-extractor.
+behavior. The system libarchive reader can read generated RPM packages. The
+2026-10-25 review also verified an independently constructed crc fixture with
+native cpio and the Rust extractor.
 
 These checks do not establish installation compatibility with every RPM release.
-Linux and Windows execution remain covered by the repository's CI configuration,
-not by a local cross-platform run in this review.
+Linux and Windows execution and native RPM compatibility are covered by hosted
+CI. The new release-check jobs must pass on the exact release commit before
+publication; a local macOS run does not replace that gate.
 
 ## Explicit remaining boundaries
 

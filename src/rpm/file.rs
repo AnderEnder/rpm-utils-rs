@@ -15,6 +15,11 @@ use crate::header::{HeaderLead, IndexArray, SignatureTag, Tag, Tags, TagsWrite};
 use crate::lead::{Lead, LeadWriter};
 use crate::utils::align_n_bytes;
 
+/// An RPM stream with parsed legacy metadata and the payload offset.
+///
+/// Reading does not verify integrity automatically. Call [`Self::verify_integrity`]
+/// on the original stream before relying on stored digests. The enum-based
+/// header fields are lossy; use [`crate::RPMEditor`] for metadata preservation.
 #[derive(Debug)]
 pub struct RPMFile<T> {
     pub lead: Lead,
@@ -25,6 +30,7 @@ pub struct RPMFile<T> {
 }
 
 impl RPMFile<File> {
+    /// Open and parse a package without authenticating or checking its digests.
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let file = OpenOptions::new().read(true).open(path)?;
         Self::read(file)
@@ -32,6 +38,7 @@ impl RPMFile<File> {
 }
 
 impl<T: 'static + Read + Seek> RPMFile<T> {
+    /// Parse RPM v3/v4 metadata, rejecting unsupported explicit package formats.
     pub fn read(mut reader: T) -> io::Result<Self> {
         let lead = Lead::read(&mut reader)?;
 
@@ -64,6 +71,7 @@ impl<T: 'static + Read + Seek> RPMFile<T> {
         })
     }
 
+    /// Atomically write the decompressed CPIO payload, preserving output on error.
     pub fn copy_payload(self, path: &Path) -> io::Result<u64> {
         let parent = path
             .parent()

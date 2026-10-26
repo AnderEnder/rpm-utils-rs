@@ -7,6 +7,10 @@ use crate::header::{SignatureTag, Tag, Tags};
 use crate::lead::Lead;
 use crate::payload::{FileInfo, RPMPayload};
 
+/// A convenient, lossy view of known RPM metadata.
+///
+/// Unknown tag IDs and additional I18N translations are not retained. Use
+/// [`crate::header::RawHeader`] or [`crate::RPMEditor`] for lossless editing.
 #[derive(Debug, Default)]
 pub struct RPMInfo {
     pub name: String,
@@ -165,11 +169,24 @@ impl<T: Read> From<&RPMFile<T>> for RPMInfo {
 
 impl RPMInfo {
     /// Legacy infallible conversion; panics for an invalid build timestamp.
-    /// Prefer try_into_rpm() for values originating outside the application.
+    /// Prefer [`Self::try_into_rpm`] for values originating outside the application.
+    ///
+    /// # Panics
+    ///
+    /// Panics if metadata cannot be represented by the RPM header format.
+    #[deprecated(
+        since = "0.2.0",
+        note = "use try_into_rpm() to handle invalid metadata"
+    )]
     pub fn into_rpm<T: Write>(self, writer: T) -> RPMFile<T> {
         self.try_into_rpm(writer).expect("Invalid RPM metadata")
     }
 
+    /// Convert known metadata into a low-level writer without writing a package.
+    ///
+    /// Returns an error if the build timestamp does not fit RPM's `u32` range.
+    /// This does not restore metadata lost when constructing this view; use
+    /// [`crate::RPMBuilder::build_package`] to create a complete package.
     pub fn try_into_rpm<T: Write>(self, writer: T) -> io::Result<RPMFile<T>> {
         if u32::try_from(self.build_time).is_err() {
             return Err(io::Error::new(
