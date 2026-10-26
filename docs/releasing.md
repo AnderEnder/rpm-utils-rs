@@ -43,20 +43,55 @@ latest-stable policy and must be reflected in the manifest and documentation.
 
 ## Publish
 
-Publishing is a separate maintainer action. A successful dry run builds the
+Publishing is a separate maintainer action. `.github/workflows/release.yml`
+publishes matching `v*` tags through crates.io trusted publishing after checking
+that the commit is on `master`, the Rust workflow passed on that exact commit,
+and packaged tests and installation succeed. The publishing job uses the GitHub
+environment `release` and requests a short-lived OIDC token; no registry token
+is stored in GitHub secrets.
+
+A successful dry run builds the
 archive but does not establish registry name availability, ownership, or account
 readiness. Confirm the `rpm-utils` name is available (or owned by the publishing
 account), verify the account email, and authenticate with `cargo login` or the
 registry's supported CI authentication. Keep credentials out of the repository.
 
+### One-time trusted-publishing setup
+
+crates.io requires a token-authenticated first publication before a trusted
+publisher can be configured. For initial setup, publish an isolated snapshot of
+the real crate as `0.0.0`; keep `master` at the intended `0.2.0` release. Log in
+locally using `cargo login`, inspect the bootstrap archive, and publish from its
+clean committed checkout with `cargo publish --locked`. Never commit the token.
+
+In the `rpm-utils` crate's Settings → Trusted Publishing, add:
+
+| Field | Value |
+| --- | --- |
+| Repository owner | `AnderEnder` |
+| Repository name | `rpm-utils-rs` |
+| Workflow filename | `release.yml` |
+| Environment | `release` |
+
+The GitHub environment must use the same name. After saving the publisher, use
+the tagged workflow for `0.2.0`. After verifying the real release, yank the
+bootstrap with `cargo yank --version 0.0.0`. Yanking prevents new dependency
+resolution but does not remove the archived version.
+
+### Tagged release
+
 1. Ensure the release commit is clean and its version has not been published.
 2. Create an annotated tag on that commit, e.g.
    `git tag -a v0.2.0 -m 'rpm-utils 0.2.0'`. If the tag already exists, verify it
    points to the checked commit; do not move a published release tag.
-3. Run `cargo publish --locked` once the maintainer has authorized publication.
+3. Push the checked commit and tag. The `Publish to crates.io` workflow publishes
+   using the configured trusted publisher. For a retry, dispatch `release.yml`
+   on the same tag: `gh workflow run release.yml --ref v0.2.0`. Dispatching it on
+   a branch is rejected. If authentication is not configured, complete the
+   trusted-publishing setup and rerun the failed publishing job.
 4. Verify the crates.io listing, docs.rs build, and
    `cargo install rpm-utils --version 0.2.0 --locked` using a temporary root.
-5. Push the release commit and tag, and publish release notes from the changelog.
+5. Publish GitHub release notes from the changelog after registry publication.
 
 Release versions cannot be overwritten. Correct a defective release with a new
 version; yank it if needed to prevent new dependency resolution. Publication
