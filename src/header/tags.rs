@@ -298,7 +298,7 @@ pub enum SignatureTag {
     SHA1Header = 269,
     LongSigSize = 270,
     LongArchiveSize = 271,
-    SHA256Header = 272,
+    SHA256Header = 273,
     Size = 1000,
     LEMD5_1 = 1001,
     PGP = 1002,

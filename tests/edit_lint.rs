@@ -63,6 +63,10 @@ fn metadata_edits_preserve_compressed_payload_unknown_values_and_locales() -> io
         let mut editor = RPMEditor::open(&staged)?;
         editor.set_text(1004, "Edited summary")?;
         editor.save(&output)?;
+        let bytes = std::fs::read(&output)?;
+        let signature = RawHeader::read(&mut &bytes[96..])?;
+        assert!(signature.get(273).is_some());
+        assert!(signature.get(272).is_none());
         assert_eq!(compressed_payload(&output)?, original);
         let raw = header(&output)?;
         assert_eq!(raw.get(65000).unwrap().data, [0, 255, 1, 0]);
