@@ -5,7 +5,7 @@ It deliberately needs no Linux C compiler, libc or sysroot at link time:
 ```sh
 rustup target add aarch64-unknown-linux-musl x86_64-unknown-linux-musl
 RUSTFLAGS='-C linker=rust-lld -C linker-flavor=ld.lld -C link-self-contained=no -C link-arg=--entry=_start' \
-  cargo rpm --manifest-path examples/cross-smoke/Cargo.toml \
+  cargo rpm-build --manifest-path examples/cross-smoke/Cargo.toml \
     --target aarch64-unknown-linux-musl --locked --output /tmp/smoke.aarch64.rpm
 ```
 

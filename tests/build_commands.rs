@@ -101,13 +101,13 @@ fn own_cargo_subcommand_builds_and_packages_metadata_assets() -> io::Result<()> 
     let dir = tempfile::tempdir()?;
     cargo_project(dir.path())?;
     let output = dir.path().join("cargo.rpm");
-    let bin = Path::new(env!("CARGO_BIN_EXE_cargo-rpm"));
+    let bin = Path::new(env!("CARGO_BIN_EXE_cargo-rpm-build"));
     let mut paths = vec![bin.parent().unwrap().to_owned()];
     paths.extend(std::env::split_paths(
         &std::env::var_os("PATH").unwrap_or_default(),
     ));
     let result = Command::new(env!("CARGO"))
-        .args(["rpm", "--offline"])
+        .args(["rpm-build", "--offline"])
         .arg("--manifest-path")
         .arg(dir.path().join("Cargo.toml"))
         .arg("--output")
@@ -139,10 +139,10 @@ fn cargo_packaging_without_build_and_target_conflicts_preserve_output() -> io::R
     let dir = tempfile::tempdir()?;
     cargo_project(dir.path())?;
     let output = dir.path().join("output.rpm");
-    let bin = env!("CARGO_BIN_EXE_cargo-rpm");
+    let bin = env!("CARGO_BIN_EXE_cargo-rpm-build");
     let invoke = |extra: &[&str]| {
         Command::new(bin)
-            .args(["rpm", "--no-build", "--offline"])
+            .args(["rpm-build", "--no-build", "--offline"])
             .arg("--manifest-path")
             .arg(dir.path().join("Cargo.toml"))
             .arg("--output")
@@ -214,8 +214,8 @@ fn cargo_workspaces_require_selection_and_resolve_member_paths() -> io::Result<(
         "[workspace]\nmembers = ['one', 'two']\nresolver = '3'\n",
     )?;
     let output = dir.path().join("member.rpm");
-    let result = Command::new(env!("CARGO_BIN_EXE_cargo-rpm"))
-        .args(["rpm", "--no-build", "--offline", "--package", "two"])
+    let result = Command::new(env!("CARGO_BIN_EXE_cargo-rpm-build"))
+        .args(["rpm-build", "--no-build", "--offline", "--package", "two"])
         .arg("--manifest-path")
         .arg(dir.path().join("Cargo.toml"))
         .arg("--output")
@@ -227,8 +227,8 @@ fn cargo_workspaces_require_selection_and_resolve_member_paths() -> io::Result<(
         String::from_utf8_lossy(&result.stderr)
     );
     assert_eq!(RPMInfo::from(&RPMFile::open(&output)?).name, "two");
-    let result = Command::new(env!("CARGO_BIN_EXE_cargo-rpm"))
-        .args(["rpm", "--no-build", "--offline"])
+    let result = Command::new(env!("CARGO_BIN_EXE_cargo-rpm-build"))
+        .args(["rpm-build", "--no-build", "--offline"])
         .arg("--manifest-path")
         .arg(dir.path().join("Cargo.toml"))
         .arg("--output")

@@ -1,4 +1,4 @@
-//! Our Cargo subcommand: cargo rpm, configured in package.metadata.rpm.
+//! Our Cargo subcommand: cargo rpm-build, configured in package.metadata.rpm.
 use clap::Parser;
 use rpm_utils::{ManifestFile, PackageManifest, PackageTarget};
 use serde_json::Value;
@@ -11,7 +11,7 @@ use std::{
 
 #[derive(Parser)]
 #[command(
-    name = "cargo rpm",
+    name = "cargo rpm-build",
     about = "Build and package Cargo projects as unsigned Linux RPMs"
 )]
 struct Args {
@@ -286,9 +286,9 @@ fn run(args: Args) -> io::Result<()> {
     Ok(())
 }
 fn main() -> ExitCode {
-    // Cargo invokes cargo-rpm with the subcommand name as its first argument.
+    // Cargo invokes cargo-rpm-build with the subcommand name as its first argument.
     let mut arguments: Vec<_> = std::env::args_os().collect();
-    if arguments.get(1).is_some_and(|arg| arg == "rpm") {
+    if arguments.get(1).is_some_and(|arg| arg == "rpm-build") {
         arguments.remove(1);
     }
     match run(Args::parse_from(arguments)) {

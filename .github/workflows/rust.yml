@@ -89,7 +89,7 @@ jobs:
           mkdir -p cross-packages
           for arch in aarch64 x86_64; do
             RUSTFLAGS='-C linker=rust-lld -C linker-flavor=ld.lld -C link-self-contained=no -C link-arg=--entry=_start' \
-              target/debug/cargo-rpm rpm --locked --offline \
+              target/debug/cargo-rpm-build rpm-build --locked --offline \
                 --manifest-path examples/cross-smoke/Cargo.toml \
                 --target "${arch}-unknown-linux-musl" \
                 --output "cross-packages/smoke.${arch}.rpm"

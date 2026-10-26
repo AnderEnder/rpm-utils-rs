@@ -1,4 +1,4 @@
-//! Declarative packaging shared by rpm-build and our cargo rpm subcommand.
+//! Declarative packaging shared by rpm-build and our cargo rpm-build subcommand.
 use super::{PackageTarget, RPMBuilder};
 use serde::Deserialize;
 use std::{

@@ -41,9 +41,8 @@ custom owners must set both names and `payload_owner(uid, gid)` as appropriate.
 ## Standalone build command
 
 Install this repository's tools with `cargo install --path . --locked`. This
-installs our `cargo-rpm` executable along with `rpm-build` and the inspection tools.
-If another crate already installed a binary called `cargo-rpm`, Cargo reports that
-collision; choose which implementation to keep before installing.
+installs our `cargo-rpm-build` executable along with `rpm-build` and the inspection tools.
+The `cargo rpm-build` command can coexist with the third-party `cargo rpm` command.
 
 Write `rpm.toml` for prebuilt JVM/data files:
 
@@ -94,14 +93,14 @@ versioned requirements and JVM dependency analysis are not implemented.
 
 ## Our Cargo integration
 
-Our `cargo rpm` reads `[package.metadata.rpm]` from the selected Cargo package,
+Our `cargo rpm-build` reads `[package.metadata.rpm]` from the selected Cargo package,
 resolves workspace members and the target directory using `cargo metadata`, runs
 `cargo build`, and packages the result. It does not call another RPM Cargo plugin,
 `rpmbuild`, a container, or an installed Linux RPM library.
 
 ```toml
 [package.metadata.rpm]
-# This can also be provided by cargo rpm --target.
+# This can also be provided by cargo rpm-build --target.
 target = "aarch64-unknown-linux-musl"
 summary = "My cross-compiled tool"
 source-date-epoch = 1700000000
@@ -131,10 +130,10 @@ triple; `{profile}` is the artifact profile directory (`dev` maps to `debug`);
 beside the selected package's `Cargo.toml`, including for workspace members.
 
 ```sh
-cargo rpm --target aarch64-unknown-linux-musl --locked
-cargo rpm --target x86_64-unknown-linux-gnu --profile release --bin my-tool
-cargo rpm --package workspace-member --target aarch64-unknown-linux-musl
-cargo rpm --no-build --target aarch64-unknown-linux-musl
+cargo rpm-build --target aarch64-unknown-linux-musl --locked
+cargo rpm-build --target x86_64-unknown-linux-gnu --profile release --bin my-tool
+cargo rpm-build --package workspace-member --target aarch64-unknown-linux-musl
+cargo rpm-build --no-build --target aarch64-unknown-linux-musl
 ```
 
 The default profile is `release`. `--features`, `--all-features`,

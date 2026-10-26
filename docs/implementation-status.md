@@ -33,7 +33,7 @@ Reviewed and tested on 2026-10-25.
   payload bytes; changed packages get fresh digests and are unsigned.
   `RPMEditor::preview()` and `rpm-edit --dry-run` build and validate proposed edits
   in scratch storage and report changes without publishing a package.
-- **Cross-packaging:** `rpm-build` and our own `cargo rpm` support explicit Linux
+- **Cross-packaging:** `rpm-build` and our own `cargo rpm-build` support explicit Linux
   architectures and JVM/data `noarch` packages from macOS or other hosts. TOML
   manifests, optional build commands, Cargo workspace/profile resolution, target
   sanity checks, installed mode/ownership control and reproducible timestamps are
