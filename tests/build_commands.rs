@@ -246,3 +246,38 @@ fn cargo_workspaces_require_selection_and_resolve_member_paths() -> io::Result<(
     assert_eq!(RPMInfo::from(&RPMFile::open(&output)?).name, "two");
     Ok(())
 }
+
+#[cfg(feature = "cli")]
+#[test]
+fn cargo_packaging_library_builds_and_rejects_conflicting_target() -> io::Result<()> {
+    use rpm_utils::rpm::cargo::{CargoPackageOptions, build_package};
+
+    let dir = tempfile::tempdir()?;
+    cargo_project(dir.path())?;
+    let output = dir.path().join("library.rpm");
+    let mut options = CargoPackageOptions {
+        manifest_path: dir.path().join("Cargo.toml"),
+        package: None,
+        target: None,
+        profile: "release".into(),
+        bin: None,
+        output: Some(output.clone()),
+        no_build: true,
+        features: vec![],
+        all_features: false,
+        no_default_features: false,
+        locked: false,
+        offline: true,
+        source_date_epoch: None,
+    };
+    assert_eq!(build_package(options.clone(), |_| {})?, output);
+    let original = std::fs::read(&output)?;
+    let mut rpm = RPMFile::open(&output)?;
+    rpm.verify_integrity()?;
+    assert_eq!(RPMInfo::from(&rpm).name, "cargo-rpm-fixture");
+
+    options.target = Some("aarch64-unknown-linux-musl".into());
+    assert!(build_package(options, |_| {}).is_err());
+    assert_eq!(std::fs::read(output)?, original);
+    Ok(())
+}
