@@ -1,7 +1,6 @@
 use clap::Parser;
 use std::{io, path::PathBuf, process::ExitCode};
 
-#[path = "rpm_edit/workflow.rs"]
 mod workflow;
 
 #[derive(Debug, Parser)]

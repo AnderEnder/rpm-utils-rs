@@ -2,7 +2,6 @@
 use clap::Parser;
 use std::{path::PathBuf, process::ExitCode};
 
-#[path = "cargo_rpm_build/workflow.rs"]
 mod workflow;
 
 #[derive(Parser)]
