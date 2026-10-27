@@ -15,9 +15,11 @@ use std::{
     about = "Build and package Cargo projects as unsigned Linux RPMs"
 )]
 struct Args {
+    /// Path to the Cargo package or workspace manifest
     #[arg(long, default_value = "Cargo.toml")]
     manifest_path: PathBuf,
 
+    /// Select a package in the Cargo workspace
     #[arg(short, long)]
     package: Option<String>,
 
@@ -29,9 +31,11 @@ struct Args {
     #[arg(long, default_value = "release")]
     profile: String,
 
+    /// Select the binary to build and package
     #[arg(long)]
     bin: Option<String>,
 
+    /// Write the RPM to this path
     #[arg(short, long)]
     output: Option<PathBuf>,
 
@@ -39,21 +43,27 @@ struct Args {
     #[arg(long)]
     no_build: bool,
 
+    /// Enable Cargo features; may be specified more than once
     #[arg(long)]
     features: Vec<String>,
 
+    /// Enable all Cargo features
     #[arg(long, conflicts_with = "no_default_features")]
     all_features: bool,
 
+    /// Disable the package's default Cargo features
     #[arg(long)]
     no_default_features: bool,
 
+    /// Require Cargo.lock to be up to date
     #[arg(long)]
     locked: bool,
 
+    /// Run Cargo without network access
     #[arg(long)]
     offline: bool,
 
+    /// Override the reproducible build timestamp, in seconds since the Unix epoch
     #[arg(long)]
     source_date_epoch: Option<u32>,
 }

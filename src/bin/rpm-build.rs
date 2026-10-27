@@ -10,15 +10,19 @@ use std::{
 #[derive(Parser)]
 #[command(about = "Build an unsigned Linux/noarch RPM from a TOML manifest on any host")]
 struct Args {
+    /// Path to the RPM packaging manifest
     #[arg(short, long, default_value = "rpm.toml")]
     manifest: PathBuf,
 
+    /// Write the RPM to this path
     #[arg(short, long)]
     output: Option<PathBuf>,
 
+    /// Override the manifest's Linux target architecture or target triple
     #[arg(long, alias = "arch")]
     target: Option<String>,
 
+    /// Override the reproducible build timestamp, in seconds since the Unix epoch
     #[arg(long)]
     source_date_epoch: Option<u32>,
 
