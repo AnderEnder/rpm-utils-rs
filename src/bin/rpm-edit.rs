@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::{io, path::PathBuf, process::ExitCode};
 
-mod workflow;
+use rpm_utils::rpm::edit_options::{EditOptions, prepare};
 
 #[derive(Debug, Parser)]
 #[command(about = "Edit RPM v3/v4 metadata or files and write an unsigned package atomically")]
@@ -46,7 +46,17 @@ struct Args {
     json: bool,
 }
 fn run(args: Args) -> io::Result<()> {
-    let editor = workflow::prepare(&args)?;
+    let options = EditOptions {
+        input: args.input.clone(),
+        set: args.set.clone(),
+        epoch: args.epoch,
+        remove_tags: args.remove_tags.clone(),
+        replace_file: args.replace_file.clone(),
+        add_file: args.add_file.clone(),
+        remove_file: args.remove_file.clone(),
+        chmod: args.chmod.clone(),
+    };
+    let editor = prepare(&options)?;
     if args.dry_run {
         let preview = editor.preview()?;
         if args.json {

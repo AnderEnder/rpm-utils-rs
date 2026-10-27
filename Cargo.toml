@@ -23,7 +23,7 @@ cli = ["dep:clap", "dep:serde_json"]
 
 [[bin]]
 name = "cargo-rpm-build"
-path = "src/bin/cargo-rpm-build/main.rs"
+path = "src/bin/cargo-rpm-build.rs"
 required-features = ["cli"]
 
 [[bin]]
@@ -48,7 +48,7 @@ required-features = ["cli"]
 
 [[bin]]
 name = "rpm-edit"
-path = "src/bin/rpm-edit/main.rs"
+path = "src/bin/rpm-edit.rs"
 required-features = ["cli"]
 
 [[bin]]

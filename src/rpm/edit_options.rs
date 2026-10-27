@@ -1,9 +1,28 @@
-use super::Args;
-use rpm_utils::{
-    RPMEditor,
-    header::{RType, RawTag},
-};
+//! Apply requested metadata and file edits to an RPM.
+use super::RPMEditor;
+use crate::header::{RType, RawTag};
 use std::io;
+
+/// Edits to prepare before previewing or saving a package.
+#[derive(Debug, Clone)]
+pub struct EditOptions {
+    /// Input RPM path.
+    pub input: std::path::PathBuf,
+    /// Text metadata changes in `TAG=VALUE` form.
+    pub set: Vec<String>,
+    /// Optional numeric RPM epoch.
+    pub epoch: Option<u32>,
+    /// Metadata names or numeric tag IDs to remove.
+    pub remove_tags: Vec<String>,
+    /// File replacements in `PACKAGE_PATH=SOURCE` form.
+    pub replace_file: Vec<String>,
+    /// File additions in `PACKAGE_PATH=SOURCE` form.
+    pub add_file: Vec<String>,
+    /// Installed paths to remove.
+    pub remove_file: Vec<String>,
+    /// Permission changes in `PACKAGE_PATH=OCTAL` form.
+    pub chmod: Vec<String>,
+}
 
 fn tag_id(value: &str) -> io::Result<u32> {
     let id = match value.to_ascii_lowercase().as_str() {
@@ -38,7 +57,8 @@ fn pair(value: &str) -> io::Result<(&str, &str)> {
         .split_once('=')
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Expected KEY=VALUE"))
 }
-pub(super) fn prepare(args: &Args) -> io::Result<RPMEditor> {
+/// Open an RPM and apply the specified edits without saving it.
+pub fn prepare(args: &EditOptions) -> io::Result<RPMEditor> {
     let mut editor = RPMEditor::open(&args.input)?;
     for value in &args.set {
         let (tag, text) = pair(value)?;

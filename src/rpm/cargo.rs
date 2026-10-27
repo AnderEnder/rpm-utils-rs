@@ -1,5 +1,5 @@
-use super::Args;
-use rpm_utils::{ManifestFile, PackageManifest, PackageTarget};
+//! Cargo project packaging through Cargo metadata and build commands.
+use super::{ManifestFile, PackageManifest, PackageTarget};
 use serde_json::Value;
 use std::{
     collections::HashMap,
@@ -9,11 +9,42 @@ use std::{
     process::{Command, Stdio},
 };
 
+/// Options for building and packaging a Cargo project.
+#[derive(Debug, Clone)]
+pub struct CargoPackageOptions {
+    /// Cargo package or workspace manifest path.
+    pub manifest_path: PathBuf,
+    /// Workspace package name, or None to select the default.
+    pub package: Option<String>,
+    /// Linux compiler target triple, overriding manifest metadata.
+    pub target: Option<String>,
+    /// Cargo build profile, such as `release` or `dev`.
+    pub profile: String,
+    /// Binary target name, if selection is required.
+    pub bin: Option<String>,
+    /// Explicit RPM output path, or None to use the manifest default.
+    pub output: Option<PathBuf>,
+    /// Package existing files without invoking Cargo build.
+    pub no_build: bool,
+    /// Cargo feature lists to enable.
+    pub features: Vec<String>,
+    /// Enable all Cargo features.
+    pub all_features: bool,
+    /// Disable default Cargo features.
+    pub no_default_features: bool,
+    /// Require Cargo.lock to remain unchanged.
+    pub locked: bool,
+    /// Run Cargo without network access.
+    pub offline: bool,
+    /// Override the reproducible timestamp in seconds since the Unix epoch.
+    pub source_date_epoch: Option<u32>,
+}
+
 fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message.into())
 }
 
-fn metadata(cargo: &OsStr, manifest_path: &Path, args: &Args) -> io::Result<Value> {
+fn metadata(cargo: &OsStr, manifest_path: &Path, args: &CargoPackageOptions) -> io::Result<Value> {
     let mut metadata_command = Command::new(cargo);
     metadata_command
         .args([
@@ -49,7 +80,7 @@ fn metadata(cargo: &OsStr, manifest_path: &Path, args: &Args) -> io::Result<Valu
 fn select_package<'a>(
     metadata: &'a Value,
     manifest_path: &Path,
-    args: &Args,
+    args: &CargoPackageOptions,
 ) -> io::Result<&'a Value> {
     let packages = metadata["packages"]
         .as_array()
@@ -86,7 +117,11 @@ fn select_package<'a>(
     Ok(candidates[0])
 }
 
-fn package_spec(package: &Value, name: &str, args: &Args) -> io::Result<PackageManifest> {
+fn package_spec(
+    package: &Value,
+    name: &str,
+    args: &CargoPackageOptions,
+) -> io::Result<PackageManifest> {
     let config = &package["metadata"]["rpm"];
 
     let mut spec: PackageManifest = serde_json::from_value(if config.is_null() {
@@ -116,7 +151,10 @@ fn package_spec(package: &Value, name: &str, args: &Args) -> io::Result<PackageM
     Ok(spec)
 }
 
-fn compile_target(spec: &mut PackageManifest, args: &Args) -> io::Result<Option<String>> {
+fn compile_target(
+    spec: &mut PackageManifest,
+    args: &CargoPackageOptions,
+) -> io::Result<Option<String>> {
     let compile_target = args
         .target
         .clone()
@@ -150,14 +188,15 @@ fn compile_target(spec: &mut PackageManifest, args: &Args) -> io::Result<Option<
 }
 
 fn build(
-    cargo: &OsStr,
-    manifest_path: &Path,
+    cargo_and_manifest: (&OsStr, &Path),
     base: &Path,
     name: &str,
     spec: &PackageManifest,
     compile_target: &Option<String>,
-    args: &Args,
+    args: &CargoPackageOptions,
+    diagnostics: &mut impl FnMut(&str),
 ) -> io::Result<HashMap<String, PathBuf>> {
+    let (cargo, manifest_path) = cargo_and_manifest;
     let epoch = spec.reproducible_epoch()?;
     let mut executables = std::collections::HashMap::new();
 
@@ -201,7 +240,7 @@ fn build(
         for line in result.stdout.split(|b| *b == b'\n') {
             if let Ok(value) = serde_json::from_slice::<Value>(line) {
                 if let Some(rendered) = value["message"]["rendered"].as_str() {
-                    eprint!("{rendered}");
+                    diagnostics(rendered);
                 }
                 if let (Some(name), Some(path)) = (
                     value["target"]["name"].as_str(),
@@ -228,7 +267,7 @@ fn resolve_files(
     package: &Value,
     compile_target: &Option<String>,
     mut executables: HashMap<String, PathBuf>,
-    args: &Args,
+    args: &CargoPackageOptions,
 ) -> io::Result<()> {
     let target_dir = metadata["target_directory"]
         .as_str()
@@ -303,7 +342,14 @@ fn resolve_files(
     Ok(())
 }
 
-pub(super) fn run(args: Args) -> io::Result<PathBuf> {
+/// Build and package the selected Cargo project.
+///
+/// Rendered Cargo diagnostics are passed to `diagnostics`. Cargo status output
+/// is inherited from the calling process. The `cli` feature enables this module.
+pub fn build_package(
+    args: CargoPackageOptions,
+    mut diagnostics: impl FnMut(&str),
+) -> io::Result<PathBuf> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let manifest_path = args.manifest_path.canonicalize()?;
     let metadata = metadata(&cargo, &manifest_path, &args)?;
@@ -319,7 +365,15 @@ pub(super) fn run(args: Args) -> io::Result<PathBuf> {
     let base = manifest.parent().unwrap();
     let mut spec = package_spec(package, name, &args)?;
     let target = compile_target(&mut spec, &args)?;
-    let executables = build(&cargo, &manifest_path, base, name, &spec, &target, &args)?;
+    let executables = build(
+        (&cargo, &manifest_path),
+        base,
+        name,
+        &spec,
+        &target,
+        &args,
+        &mut diagnostics,
+    )?;
     resolve_files(&mut spec, &metadata, package, &target, executables, &args)?;
     spec.build(base, args.output.as_deref())
 }

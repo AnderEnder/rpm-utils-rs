@@ -2,7 +2,7 @@
 use clap::Parser;
 use std::{path::PathBuf, process::ExitCode};
 
-mod workflow;
+use rpm_utils::rpm::cargo::{CargoPackageOptions, build_package};
 
 #[derive(Parser)]
 #[command(
@@ -71,7 +71,24 @@ fn main() -> ExitCode {
         arguments.remove(1);
     }
 
-    match workflow::run(Args::parse_from(arguments)) {
+    let args = Args::parse_from(arguments);
+    let options = CargoPackageOptions {
+        manifest_path: args.manifest_path,
+        package: args.package,
+        target: args.target,
+        profile: args.profile,
+        bin: args.bin,
+        output: args.output,
+        no_build: args.no_build,
+        features: args.features,
+        all_features: args.all_features,
+        no_default_features: args.no_default_features,
+        locked: args.locked,
+        offline: args.offline,
+        source_date_epoch: args.source_date_epoch,
+    };
+
+    match build_package(options, |message| eprint!("{message}")) {
         Ok(output) => {
             println!("Wrote {} (unsigned)", output.display());
             ExitCode::SUCCESS
