@@ -17,40 +17,55 @@ use std::{
 struct Args {
     #[arg(long, default_value = "Cargo.toml")]
     manifest_path: PathBuf,
+
     #[arg(short, long)]
     package: Option<String>,
+
     /// Rust Linux target triple; inferred from metadata.rpm.target when possible
     #[arg(long)]
     target: Option<String>,
+
     /// Cargo profile (release by default; dev artifacts are in debug)
     #[arg(long, default_value = "release")]
     profile: String,
+
     #[arg(long)]
     bin: Option<String>,
+
     #[arg(short, long)]
     output: Option<PathBuf>,
+
     /// Package existing files without invoking cargo build
     #[arg(long)]
     no_build: bool,
+
     #[arg(long)]
     features: Vec<String>,
+
     #[arg(long, conflicts_with = "no_default_features")]
     all_features: bool,
+
     #[arg(long)]
     no_default_features: bool,
+
     #[arg(long)]
     locked: bool,
+
     #[arg(long)]
     offline: bool,
+
     #[arg(long)]
     source_date_epoch: Option<u32>,
 }
+
 fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message.into())
 }
+
 fn run(args: Args) -> io::Result<()> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let manifest_path = args.manifest_path.canonicalize()?;
+
     let mut metadata_command = Command::new(&cargo);
     metadata_command
         .args([
@@ -61,28 +76,36 @@ fn run(args: Args) -> io::Result<()> {
             "--manifest-path",
         ])
         .arg(&manifest_path);
+
     if args.locked {
         metadata_command.arg("--locked");
     }
+
     if args.offline {
         metadata_command.arg("--offline");
     }
+
     let result = metadata_command.output()?;
+
     if !result.status.success() {
         return Err(io::Error::other(format!(
             "Cargo metadata failed: {}",
             String::from_utf8_lossy(&result.stderr)
         )));
     }
+
     let metadata: Value = serde_json::from_slice(&result.stdout)?;
+
     let packages = metadata["packages"]
         .as_array()
         .ok_or_else(|| invalid("Missing Cargo packages"))?;
+
     let exact = packages.iter().find(|package| {
         package["manifest_path"]
             .as_str()
             .is_some_and(|path| std::path::Path::new(path) == manifest_path)
     });
+
     let candidates: Vec<_> = if let Some(name) = &args.package {
         packages
             .iter()
@@ -100,20 +123,25 @@ fn run(args: Args) -> io::Result<()> {
             })
             .collect()
     };
+
     if candidates.len() != 1 {
         return Err(invalid("Select one Cargo workspace package with --package"));
     }
+
     let package = candidates[0];
     let name = package["name"]
         .as_str()
         .ok_or_else(|| invalid("Missing Cargo package name"))?;
+
     let base = PathBuf::from(
         package["manifest_path"]
             .as_str()
             .ok_or_else(|| invalid("Missing Cargo manifest path"))?,
     );
     let base = base.parent().unwrap();
+
     let config = &package["metadata"]["rpm"];
+
     let mut spec: PackageManifest = serde_json::from_value(if config.is_null() {
         serde_json::json!({})
     } else {
@@ -121,21 +149,27 @@ fn run(args: Args) -> io::Result<()> {
     })
     .map_err(|error| invalid(format!("Invalid package.metadata.rpm: {error}")))?;
     spec.name.get_or_insert_with(|| name.into());
+
     if spec.version.is_none() {
         spec.version = package["version"].as_str().map(Into::into);
     }
+
     if spec.description.is_none() {
         spec.description = package["description"].as_str().map(Into::into);
     }
+
     if spec.license.is_none() {
         spec.license = package["license"].as_str().map(Into::into);
     }
+
     if let Some(epoch) = args.source_date_epoch {
         spec.source_date_epoch = Some(epoch);
     }
+
     let compile_target = args
         .target
         .or_else(|| spec.target.as_ref().filter(|t| t.contains('-')).cloned());
+
     if let Some(target) = &compile_target {
         let parsed: PackageTarget = target.parse()?;
         if !target.contains('-') {
@@ -151,14 +185,18 @@ fn run(args: Args) -> io::Result<()> {
             spec.target = Some(target.clone());
         }
     }
+
     let target = spec.package_target()?;
+
     if !args.no_build && target.arch() != "noarch" && compile_target.is_none() {
         return Err(invalid(
             "Cross-building requires --target with a Linux compiler target triple",
         ));
     }
+
     let epoch = spec.reproducible_epoch()?;
     let mut executables = std::collections::HashMap::new();
+
     if !args.no_build {
         let mut command = Command::new(&cargo);
         command
@@ -216,14 +254,17 @@ fn run(args: Args) -> io::Result<()> {
             )));
         }
     }
+
     let target_dir = metadata["target_directory"]
         .as_str()
         .ok_or_else(|| invalid("Missing Cargo target directory"))?;
+
     let profile_dir = match args.profile.as_str() {
         "dev" | "test" => "debug",
         "bench" => "release",
         value => value,
     };
+
     let binary = if let Some(bin) = args.bin {
         Some(bin)
     } else {
@@ -244,6 +285,7 @@ fn run(args: Args) -> io::Result<()> {
             None
         }
     };
+
     if spec.files.is_empty() {
         let bin = binary
             .as_deref()
@@ -266,6 +308,7 @@ fn run(args: Args) -> io::Result<()> {
             mode: Some("0755".into()),
         });
     }
+
     for file in &mut spec.files {
         let path = file
             .source
@@ -281,16 +324,20 @@ fn run(args: Args) -> io::Result<()> {
             .replace("{bin}", binary.as_deref().unwrap_or(""))
             .into();
     }
+
     let output = spec.build(base, args.output.as_deref())?;
     println!("Wrote {} (unsigned)", output.display());
     Ok(())
 }
+
 fn main() -> ExitCode {
     // Cargo invokes cargo-rpm-build with the subcommand name as its first argument.
     let mut arguments: Vec<_> = std::env::args_os().collect();
+
     if arguments.get(1).is_some_and(|arg| arg == "rpm-build") {
         arguments.remove(1);
     }
+
     match run(Args::parse_from(arguments)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
