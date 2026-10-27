@@ -84,7 +84,7 @@ bitflags = "2"
 log = "0.4"
 
 sha2 = "0.10"
-sha1 = "0.10"
+sha1 = "0.11"
 md-5 = "0.10"
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }
