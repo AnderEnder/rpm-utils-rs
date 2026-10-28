@@ -10,33 +10,48 @@ use std::{
 #[derive(Parser)]
 #[command(about = "Build an unsigned Linux/noarch RPM from a TOML manifest on any host")]
 struct Args {
+    /// Path to the RPM packaging manifest
     #[arg(short, long, default_value = "rpm.toml")]
     manifest: PathBuf,
+
+    /// Write the RPM to this path
     #[arg(short, long)]
     output: Option<PathBuf>,
+
+    /// Override the manifest's Linux target architecture or target triple
     #[arg(long, alias = "arch")]
     target: Option<String>,
+
+    /// Override the reproducible build timestamp, in seconds since the Unix epoch
     #[arg(long)]
     source_date_epoch: Option<u32>,
+
     /// Environment overrides for the optional build command (KEY=VALUE)
     #[arg(long, requires = "command")]
     build_env: Vec<String>,
+
     /// Optional compiler/build command after --; executed directly, without a shell
     #[arg(last = true)]
     command: Vec<OsString>,
 }
+
 fn run(args: Args) -> io::Result<()> {
     let manifest_path = args.manifest.canonicalize()?;
     let base = manifest_path.parent().unwrap();
+
     let mut manifest = PackageManifest::from_toml(&std::fs::read_to_string(&manifest_path)?)?;
+
     if let Some(target) = args.target {
         manifest.target = Some(target);
     }
+
     if let Some(epoch) = args.source_date_epoch {
         manifest.source_date_epoch = Some(epoch);
     }
+
     let target = manifest.package_target()?;
     let epoch = manifest.reproducible_epoch()?;
+
     if let Some(program) = args.command.first() {
         let mut command = Command::new(program);
         command
@@ -70,10 +85,12 @@ fn run(args: Args) -> io::Result<()> {
             return Err(io::Error::other(format!("Build command failed: {status}")));
         }
     }
+
     let output = manifest.build(base, args.output.as_deref())?;
     println!("Wrote {} (unsigned)", output.display());
     Ok(())
 }
+
 fn main() -> ExitCode {
     match run(Args::parse()) {
         Ok(()) => ExitCode::SUCCESS,

@@ -731,3 +731,36 @@ fn dry_run_cli_never_writes_requested_paths_and_validates_results() -> io::Resul
     assert_eq!(std::fs::read(&output)?, b"preserve destination");
     Ok(())
 }
+
+#[test]
+fn edit_options_library_prepares_changes_without_modifying_input() -> io::Result<()> {
+    use rpm_utils::rpm::edit_options::{EditOptions, prepare};
+
+    let directory = tempdir()?;
+    let input = package(directory.path(), "gzip")?;
+    let original = std::fs::read(&input)?;
+    let mut options = EditOptions {
+        input: input.clone(),
+        set: vec!["summary=Library edit".into()],
+        epoch: Some(7),
+        remove_tags: vec![],
+        replace_file: vec![],
+        add_file: vec![],
+        remove_file: vec![],
+        chmod: vec!["/usr/share/test/file=0755".into()],
+    };
+    let editor = prepare(&options)?;
+    let output = directory.path().join("edited.rpm");
+    editor.save(&output)?;
+    assert_eq!(std::fs::read(&input)?, original);
+    let mut rpm = RPMFile::open(output)?;
+    rpm.verify_integrity()?;
+    let info = RPMInfo::from(&rpm);
+    assert_eq!(info.summary, "Library edit");
+    assert_eq!(info.epoch, 7);
+
+    options.chmod = vec!["/usr/share/test/file=not-octal".into()];
+    assert!(prepare(&options).is_err());
+    assert_eq!(std::fs::read(input)?, original);
+    Ok(())
+}

@@ -1,9 +1,7 @@
 use clap::Parser;
-use rpm_utils::{
-    RPMEditor,
-    header::{RType, RawTag},
-};
 use std::{io, path::PathBuf, process::ExitCode};
+
+use rpm_utils::rpm::edit_options::{EditOptions, prepare};
 
 #[derive(Debug, Parser)]
 #[command(about = "Edit RPM v3/v4 metadata or files and write an unsigned package atomically")]
@@ -47,68 +45,18 @@ struct Args {
     #[arg(long)]
     json: bool,
 }
-fn tag_id(value: &str) -> io::Result<u32> {
-    let id = match value.to_ascii_lowercase().as_str() {
-        "name" => 1000,
-        "version" => 1001,
-        "release" => 1002,
-        "summary" => 1004,
-        "description" => 1005,
-        "distribution" => 1010,
-        "vendor" => 1011,
-        "license" => 1014,
-        "packager" => 1015,
-        "group" => 1016,
-        "url" => 1020,
-        "os" => 1021,
-        "arch" => 1022,
-        "prein" => 1023,
-        "postin" => 1024,
-        "preun" => 1025,
-        "postun" => 1026,
-        _ => value.parse().map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Unknown metadata name; use a numeric tag ID",
-            )
-        })?,
-    };
-    Ok(id)
-}
-fn pair(value: &str) -> io::Result<(&str, &str)> {
-    value
-        .split_once('=')
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Expected KEY=VALUE"))
-}
 fn run(args: Args) -> io::Result<()> {
-    let mut editor = RPMEditor::open(&args.input)?;
-    for value in args.set {
-        let (tag, text) = pair(&value)?;
-        editor.set_text(tag_id(tag)?, text)?;
-    }
-    if let Some(epoch) = args.epoch {
-        editor.set_tag(RawTag::from_value(1003, RType::Int32(epoch))?)?;
-    }
-    for tag in args.remove_tags {
-        editor.remove_tag(tag_id(&tag)?)?;
-    }
-    for value in args.replace_file {
-        let (path, source) = pair(&value)?;
-        editor.replace_file(path, source)?;
-    }
-    for value in args.add_file {
-        let (path, source) = pair(&value)?;
-        editor.add_file(source, path)?;
-    }
-    for path in args.remove_file {
-        editor.remove_file(&path)?;
-    }
-    for value in args.chmod {
-        let (path, mode) = pair(&value)?;
-        let mode = u32::from_str_radix(mode.strip_prefix("0o").unwrap_or(mode), 8)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Invalid octal mode"))?;
-        editor.set_file_mode(path, mode)?;
-    }
+    let options = EditOptions {
+        input: args.input.clone(),
+        set: args.set.clone(),
+        epoch: args.epoch,
+        remove_tags: args.remove_tags.clone(),
+        replace_file: args.replace_file.clone(),
+        add_file: args.add_file.clone(),
+        remove_file: args.remove_file.clone(),
+        chmod: args.chmod.clone(),
+    };
+    let editor = prepare(&options)?;
     if args.dry_run {
         let preview = editor.preview()?;
         if args.json {

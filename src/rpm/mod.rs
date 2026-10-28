@@ -19,3 +19,9 @@ pub use info::RPMInfo;
 pub use lint::{LintIssue, LintReport, Severity, lint_rpm, repair_rpm};
 pub use manifest::{ManifestFile, PackageManifest};
 pub use target::PackageTarget;
+
+/// Cargo project packaging support.
+#[cfg(feature = "cli")]
+pub mod cargo;
+/// Options for preparing package edits.
+pub mod edit_options;
